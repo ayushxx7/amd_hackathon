@@ -1,0 +1,93 @@
+[
+    {
+        "id": "SKU-001",
+        "name": "Act II Popcorn",
+        "brand": "Act II",
+        "unit": "30g",
+        "price": 10.00,
+        "keywords": ["act 2", "popcorn", "yellow packet", "instant popcorn", "classic salted"],
+        "category": "Snacks"
+    },
+    {
+        "id": "SKU-002",
+        "name": "Dove Intense Repair Shampoo",
+        "brand": "Dove",
+        "unit": "180ml",
+        "price": 180.00,
+        "keywords": ["dove", "shampoo", "white bottle", "intense repair", "blue cap"],
+        "category": "Personal Care"
+    },
+    {
+        "id": "SKU-003",
+        "name": "Everest Sambhar Masala",
+        "brand": "Everest",
+        "unit": "50g",
+        "price": 45.00,
+        "keywords": ["everest", "sambhar masala", "spices", "red box", "yellow logo"],
+        "category": "Spices"
+    },
+    {
+        "id": "SKU-004",
+        "name": "Patanjali Noodles Chatpata",
+        "brand": "Patanjali",
+        "unit": "60g",
+        "price": 20.00,
+        "keywords": ["patanjali", "noodles", "chatpata masala", "green packet", "instant noodles"],
+        "category": "Instant Food"
+    },
+    {
+        "id": "SKU-005",
+        "name": "Patanjali Noodles Yummy Masala",
+        "brand": "Patanjali",
+        "unit": "60g",
+        "price": 15.00,
+        "keywords": ["patanjali", "noodles", "yummy masala", "orange packet", "instant noodles"],
+        "category": "Instant Food"
+    },
+    {
+        "id": "SKU-006",
+        "name": "Parachute Advanced Gold Coconut Oil",
+        "brand": "Parachute",
+        "unit": "200ml",
+        "price": 95.00,
+        "keywords": ["parachute", "coconut oil", "blue bottle", "gold coconut oil", "hair oil"],
+        "category": "Personal Care"
+    },
+    {
+        "id": "SKU-007",
+        "name": "Rasayana Ayurvedic Chai",
+        "brand": "Rasayana",
+        "unit": "250g",
+        "price": 250.00,
+        "keywords": ["rasayana", "ayurvedic chai", "tea", "brown pack", "herbal tea"],
+        "category": "Beverages"
+    },
+    {
+        "id": "SKU-008",
+        "name": "Royal Dry Fruits Badam Giri",
+        "brand": "Royal Dry Fruits",
+        "unit": "500g",
+        "price": 450.00,
+        "keywords": ["royal dry fruits", "badam giri", "almonds", "dry fruits", "plastic pack"],
+        "category": "Groceries"
+    },
+    {
+        "id": "SKU-009",
+        "name": "Cricket Ball",
+        "brand": "Vicky",
+        "unit": "1 Unit",
+        "price": 120.00,
+        "keywords": ["cricket ball", "red ball", "sports", "leather ball"],
+        "category": "Sports"
+    },
+    {
+        "id": "SKU-010",
+        "name": "Glutamine Power",
+        "brand": "MuscleBlaze",
+        "unit": "250g",
+        "price": 1200.00,
+        "keywords": ["glutamine power", "supplement", "black jar", "gym powder", "fitness"],
+        "category": "Supplements"
+    }
+]
+

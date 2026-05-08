@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KiranaAI | Visual Billing Counter</title>
+    <meta name="description" content="Local Kirana Billing Counter using Gemma 4. Visual checkout for Bharat's retailers.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <main class="app-layout">
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <h1 class="logo">Kirana<span>AI</span></h1>
+                <p class="tagline">Smart Billing Counter</p>
+            </header>
+
+            <div class="cart-container">
+                <div class="cart-header">
+                    <h2>Current Bill</h2>
+                    <span class="item-count" id="item-count">0 items</span>
+                </div>
+                
+                <div class="cart-items" id="cart-items">
+                    <!-- Items will appear here -->
+                    <div class="empty-cart" id="empty-cart">
+                        <p>No items added yet</p>
+                    </div>
+                </div>
+
+                <div class="cart-footer">
+                    <div class="total-row">
+                        <span>Total Amount</span>
+                        <span class="total-price" id="total-price">₹0.00</span>
+                    </div>
+                    <button class="btn-checkout" id="checkout-btn" disabled>Generate Bill</button>
+                    <button class="btn-clear" id="clear-btn">Clear All</button>
+                </div>
+            </div>
+        </aside>
+
+        <section class="main-content">
+            <div class="camera-section">
+                <div class="camera-wrapper glass-card">
+                    <video id="webcam" autoplay playsinline></video>
+                    <canvas id="capture-canvas" hidden></canvas>
+                    <div class="camera-overlay">
+                        <div class="scanner-line"></div>
+                        <div class="focus-brackets"></div>
+                    </div>
+                    
+                    <div class="detection-status hidden" id="detection-status">
+                        <div class="status-badge">
+                            <span class="status-dot"></span>
+                            <span id="status-text">Identifying...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="camera-controls">
+                    <button class="btn-primary btn-large" id="scan-btn">
+                        <span class="btn-icon">📸</span>
+                        <span class="btn-text">Scan & Add Item</span>
+                        <div class="loader hidden"></div>
+                    </button>
+                    <button class="btn-secondary" id="upload-btn">
+                        <span class="btn-icon">📁</span>
+                        <span>Upload Sample</span>
+                    </button>
+                    <input type="file" id="file-input" hidden accept="image/*">
+                </div>
+            </div>
+
+            <div class="info-section">
+                <div class="glass-card info-card">
+                    <div class="info-header">
+                        <h3>Last Scanned Item</h3>
+                    </div>
+                    <div class="info-body" id="last-item-info">
+                        <p class="placeholder-text">Scan an item to see details</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div class="notification-container" id="notification-container"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
