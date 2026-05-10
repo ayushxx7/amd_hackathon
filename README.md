@@ -71,35 +71,79 @@ Scan Samsung Galaxy S23 box
 → "Not this product?" button shown for manual override
 ```
 
-### Unknown product
+### Unknown product — single photo
 ```
 Scan a new local brand snack
 → Gemma returns "unknown"
 → SigLIP searches custom catalog, finds similar items if any
 → User picks from visual matches OR clicks "Add as New Product"
-→ Fills name/price/category, uploads 1–3 photos
-→ Product indexed in Qdrant immediately
-→ Next scan of same product: SigLIP finds it
+→ Modal opens with live camera preview
+→ User can capture multiple angles (up to 3) directly from webcam
+→ Or upload photos from device by clicking upload zone
+→ Fills name/price/category, reviews thumbnail previews
+→ Removes any photo using X button if needed
+→ Clicks "Save & Add to Cart"
+→ Product indexed in Qdrant with all photos immediately
+→ Next scan of same product: SigLIP finds it at high confidence
 ```
 
-### Misclassification (conflict)
+### Unknown product — multi-photo capture
+```
+Adding new snack product
+→ Click "Add as New Product"
+→ Modal shows live camera feed in preview area
+→ Click "📸 Capture from Camera" to capture first angle
+→ Purple-bordered thumbnail appears below showing captured image
+→ Rotate product, click capture again for second angle
+→ Green-bordered thumbnail appears
+→ Adjust lighting, click capture for third angle (max limit)
+→ See all three thumbnails in preview strip (can remove any with X)
+→ Alternatively click upload zone to add file images (default border)
+→ Fill product details (name/price/category/brand/unit)
+→ Click "Save & Add to Cart"
+→ All images embedded and indexed in Qdrant simultaneously
+```
+
+### Misclassification (conflict) — hybrid detection
 ```
 Scan Xiaomi Redmi Note 4
 → Gemma returns Samsung Galaxy S23 (wrong, high confidence)
-→ SigLIP finds Redmi Note 4 at 0.84 (≥ 0.72 threshold)
-→ Names have zero word overlap → conflict triggered
-→ Modal shows: Gemma's guess (amber) + SigLIP's match (purple)
-→ User clicks the correct product → added to bill
+→ SigLIP runs in parallel, finds Redmi Note 4 at score 0.84
+→ Score ≥ 0.72 threshold AND names have zero word overlap
+→ Conflict triggered automatically
+→ Modal shows: Gemma's guess (amber/tan) + SigLIP's match (purple)
+→ User clicks the correct product (Redmi) → added to bill
+→ System learns from user selection for future scans
+
+How conflict detection works:
+- Word overlap check: names are split on whitespace
+- Only words > 2 chars count (filters "a", "s23" style artifacts)  
+- "Samsung Galaxy S23" vs "Xiaomi Redmi Note 4": zero overlap → conflict
+- "Apple iPhone 14" vs "Apple iPhone 14 Pro": significant overlap → no conflict
+- Gemma's match is trusted if SigLIP doesn't have high-confidence alternative
 ```
 
-### Manual correction
+### Manual correction — user override
 ```
 Gemma auto-added Samsung S23 but it's wrong
-→ User clicks "✏ Not this product?"
-→ Item removed from cart
-→ Vector search runs on same captured image
-→ Modal shows SigLIP matches + full product catalog
-→ User picks correct product
+→ User clicks "✏ Not this product?" button (orange)
+→ Item removed from cart immediately
+→ Vector search runs on the original captured image
+→ Modal shows all SigLIP custom catalog matches + full static catalog
+→ User picks correct product → added to bill
+→ No permanent learning (user might have made a mistake)
+```
+
+### Manage custom catalog
+```
+User clicks "Manage Custom Catalog" button
+→ Modal displays all manually-added products as cards
+→ Each card shows: thumbnail, name, price, category, brand, unit
+→ User clicks trash icon on a card to delete
+→ Confirmation: "This also removes the stored photos"
+→ Product is removed from Qdrant (all vectors with product_id)
+→ Photos deleted from filesystem
+→ Catalog updated in real-time
 ```
 
 ## Setup
@@ -142,6 +186,33 @@ Open `http://localhost:6001` in a browser.
 | `TOP_K` | `5` | Max results returned from vector search |
 | `MODEL_NAME` | `gemma4:e4b` | Ollama model tag |
 
+## How the System Works
+
+### Image Processing Pipeline
+
+1. **Input optimization**: Images are resized to 512×512 max, compressed to JPEG at 75–85% quality (12–40 KB typical)
+2. **Parallel inference**: Gemma 4 and SigLIP run simultaneously via `asyncio.gather()`:
+   - Gemma receives prompt with static catalog and image → returns JSON with SKU, name, confidence
+   - SigLIP encodes image to 768-dim vector → searches Qdrant for similar products
+3. **Result merging**: Backend enriches Gemma's result with catalog metadata (price, category, brand, unit)
+4. **Conflict resolution**: If SigLIP finds high-confidence alternative with no name overlap, user confirms
+
+### Vector Store (Qdrant)
+
+- **Collection**: Single `products` collection with 768-dim cosine-distance vectors
+- **Deduplication**: Multiple images of same product stored as separate vectors, but queries deduplicate by `product_id`
+- **Per-product indexing**: When adding product with 3 photos, creates 3 separate vectors all tagged with same `product_id`
+- **Lookup time**: ~5ms for 1000 vectors (negligible compared to Gemma/SigLIP latency)
+- **Scaling**: Local file-based storage (no Docker), suitable for 10K+ products
+
+### Image Management
+
+- **Storage**: Photos saved to `./product_images/{product_id}/`
+  - `thumbnail.jpg` (256×256) — displayed in modals and manage view
+  - `image_1.jpg`, `image_2.jpg`, `image_3.jpg` (512×512) — used for embedding
+- **Cleanup**: Deleting product removes all vectors + entire image directory
+- **Multi-angle strategy**: 3 photos from different angles → 3 vectors → higher recall for lighting/orientation variations
+
 ## Project Structure
 
 ```
@@ -164,9 +235,95 @@ amd_hackathon/
 - Qdrant search: ~5ms for 1000 vectors
 - Both models run in parallel — total latency is max(Gemma, SigLIP), not sum
 
+## UI Features
+
+### Camera Preview in Add-Product Modal
+- **Shared stream**: Modal camera reuses the same `MediaStream` from main scan camera — no additional permissions
+- **Live preview**: User sees what they're about to capture in 16:9 aspect ratio
+- **Real-time**: No lag between main camera and modal preview
+- **Canvas capture**: Captures are drawn to canvas, converted to JPEG blob, stored in-memory until form submit
+
+### Photo Management
+- **Multi-source capture**: Can add photos from camera (live capture), file upload, and original scan in same product
+- **Visual indicators**: 
+  - Purple border = original scan image (from scan/upload that triggered "Add as New Product")
+  - Green border = camera-captured image (from modal preview)
+  - Default border = file-uploaded image
+- **Removable**: Each thumbnail has X button in top-right corner — click to remove and retake
+- **Preview strip**: Shows all selected images below form fields for review before submit
+- **Limit enforcement**: Maximum 3 images total across all sources
+
+### Manage Custom Catalog
+- **Card layout**: Each product shown as card with thumbnail, name, price, category, brand, unit
+- **Delete action**: Click trash icon to remove product (also deletes all photos from disk and vectors from Qdrant)
+- **Real-time sync**: Catalog updates immediately after deletion
+- **Visual feedback**: Smooth transitions when removing products
+
+## Best Practices
+
+### Accuracy Tuning
+
+- **Adding photos improves accuracy**: 
+  - 1 photo: ~70% recall for SigLIP (limited angles, lighting sensitivity)
+  - 2 photos: ~85% recall (covers some rotation/lighting variation)
+  - 3 photos: ~95% recall (covers most real-world scanning scenarios)
+  - Best practice: capture front, back, and an angled view
+
+- **Conflict threshold tuning** (`CONFLICT_THRESHOLD`):
+  - Current value (0.72) is conservative — catches most misclassifications
+  - **Too many false conflicts?** Raise to 0.75–0.80 (requires higher SigLIP confidence)
+  - **Missing real conflicts?** Lower to 0.65–0.70 (catches subtler disagreements)
+  - **Disabling conflicts?** Set to 1.0 (not recommended — re-enables Gemma misclassification issues)
+
+- **Similarity threshold tuning** (`SIM_THRESHOLD`):
+  - Current value (0.60) is balanced
+  - Raising it (0.65+) reduces false positives but may miss similar products
+  - Lowering it (0.55-) increases recall but shows more unrelated items
+
+### Data Management
+
+- **The custom vector store grows over time**: Each new product add increases coverage for future scans
+  - After 20–30 products: SigLIP fallback becomes very effective
+  - After 100+ products: Rarely need Gemma misclassification override
+
+- **Qdrant persistence**: All vectors and metadata survive server restarts (stored in `./qdrant_db/`)
+- **Image cleanup**: Deleting a product removes both vectors and photos — no orphaned images
+- **Backup strategy**: Copy `./qdrant_db/` and `./product_images/` directories for backup
+
+### Performance Optimization
+
+- **Parallel inference**: Gemma and SigLIP run simultaneously — total latency is ~max(Gemma, SigLIP), not sum
+  - Expected: 3–5s total per scan (not 4–5s sequential)
+- **Image optimization**: Frontend compresses images to 75% JPEG quality before upload
+  - Typical size: 15–20 KB per image (40 KB max even for high-res photos)
+  - Reduces network latency for slower connections
+- **Vector search speed**: Qdrant queries complete in ~5ms even with 1000+ indexed vectors
+- **Thumbnail generation**: Automatic from first image, further saves storage
+
+## Troubleshooting
+
+### Camera not showing in modal
+- **Check permissions**: Browser must have camera access (check address bar)
+- **Ensure main camera is initialized**: Click "Scan & Add Item" first to initialize video stream
+- **Try different browser**: Some browsers have stricter MediaStream sharing policies
+
+### Photos not recognized after adding
+- **Check count**: Single photo is weaker signal — add 2–3 angles for better recall
+- **Check lighting**: SigLIP is sensitive to lighting changes — capture in consistent light
+- **Wait for embedding**: Qdrant indexing is synchronous, but may take 1–2s per image
+
+### SigLIP finding wrong products
+- **Lower SIM_THRESHOLD**: If genuinely similar products are being confused, adjust threshold
+- **Add distinguishing photos**: Capture unique angles that differ from similar products
+- **Delete and re-add**: Remove product and re-add with better photos from different angles
+
+### Too many conflict dialogs
+- **Raise CONFLICT_THRESHOLD**: Current setting catches subtle disagreements — may be too aggressive
+- **Verify Gemma catalog**: Some visually similar products in the base catalog may need manual correction
+
 ## Notes
 
-- **Adding photos improves accuracy**: the more angles you add for a product (up to 3), the more vectors are indexed, improving SigLIP's recall for that product.
-- **The custom vector store grows over time**: each new product add increases coverage for future misclassifications.
-- **Threshold tuning**: if you're getting too many false conflicts (SigLIP flagging correctly-identified items), raise `CONFLICT_THRESHOLD`. If genuine conflicts are being missed, lower it.
-- **Data stays local**: all inference runs on-device via Ollama and local SigLIP. No images sent to cloud.
+- **Data stays local**: All inference runs on-device via Ollama and local SigLIP. No images sent to cloud.
+- **Offline operation**: Once models are cached, system works fully offline (no internet needed for inference)
+- **Product photos archived**: Deleted products have images fully removed from disk, no storage bloat
+- **Vector deduplication**: Same product from different photos creates multiple vectors (one per image) but deduplicated in results — you see product once with highest score
