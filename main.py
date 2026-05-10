@@ -1,6 +1,7 @@
 import io
 import json
 import uuid
+import shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import List
@@ -12,7 +13,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from transformers import SiglipProcessor, SiglipModel
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,33 @@ def embed_image(image_bytes: bytes) -> list:
         features = vision_out.pooler_output          # shape: [1, 768]
         features = features / features.norm(dim=-1, keepdim=True)
     return features[0].cpu().tolist()
+
+
+def _run_vector_search(image_bytes: bytes) -> list:
+    """Encode image, query Qdrant, return a deduplicated ranked list."""
+    embedding = embed_image(image_bytes)
+    hits = _qdrant.query_points(
+        collection_name="products",
+        query=embedding,
+        limit=TOP_K,
+        score_threshold=SIM_THRESHOLD,
+        with_payload=True,
+    ).points
+    seen = {}
+    for hit in hits:
+        pid = hit.payload.get("product_id")
+        if pid not in seen or hit.score > seen[pid]["score"]:
+            seen[pid] = {
+                "score": round(hit.score, 3),
+                "product_id": pid,
+                "name": hit.payload.get("name"),
+                "price": hit.payload.get("price"),
+                "category": hit.payload.get("category"),
+                "brand": hit.payload.get("brand"),
+                "unit": hit.payload.get("unit"),
+                "thumbnail_url": hit.payload.get("thumbnail_url"),
+            }
+    return sorted(seen.values(), key=lambda x: x["score"], reverse=True)
 
 
 # ── Lifespan ─────────────────────────────────────────────────────────────────
@@ -155,30 +183,7 @@ async def inference(file: UploadFile = File(...)):
         # ── Unknown → vector-store fallback ──
         vector_results = []
         try:
-            embedding = embed_image(optimised)
-            hits = _qdrant.query_points(
-                collection_name="products",
-                query=embedding,
-                limit=TOP_K,
-                score_threshold=SIM_THRESHOLD,
-                with_payload=True,
-            ).points
-            # Deduplicate by product_id, keep best score per product
-            seen = {}
-            for hit in hits:
-                pid = hit.payload.get("product_id")
-                if pid not in seen or hit.score > seen[pid]["score"]:
-                    seen[pid] = {
-                        "score": round(hit.score, 3),
-                        "product_id": pid,
-                        "name": hit.payload.get("name"),
-                        "price": hit.payload.get("price"),
-                        "category": hit.payload.get("category"),
-                        "brand": hit.payload.get("brand"),
-                        "unit": hit.payload.get("unit"),
-                        "thumbnail_url": hit.payload.get("thumbnail_url"),
-                    }
-            vector_results = sorted(seen.values(), key=lambda x: x["score"], reverse=True)
+            vector_results = _run_vector_search(optimised)
         except Exception as ve:
             print(f"Vector search error: {ve}")
 
@@ -262,6 +267,73 @@ async def add_product(
         "thumbnail_url": thumbnail_url,
         "message": f"'{name}' indexed with {len(points)} image(s).",
     }
+
+
+# ── /api/vector-search ────────────────────────────────────────────────────────
+@app.post("/api/vector-search")
+async def vector_search_only(file: UploadFile = File(...)):
+    """Vector-only search — used when correcting a Gemma misclassification."""
+    raw = await file.read()
+    img = Image.open(io.BytesIO(raw))
+    img.thumbnail((512, 512))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=75)
+    vector_results = []
+    try:
+        vector_results = _run_vector_search(buf.getvalue())
+    except Exception as ve:
+        print(f"Vector search error: {ve}")
+    return {"success": True, "vector_results": vector_results}
+
+
+# ── /api/catalog ──────────────────────────────────────────────────────────────
+@app.get("/api/catalog")
+async def get_catalog():
+    return {"products": PRODUCTS}
+
+
+# ── /api/vector-products ──────────────────────────────────────────────────────
+@app.get("/api/vector-products")
+async def list_vector_products():
+    """Return all unique products stored in the vector catalog."""
+    points, _ = _qdrant.scroll(
+        collection_name="products",
+        with_payload=True,
+        limit=1000,
+    )
+    seen: dict = {}
+    for pt in points:
+        pid = pt.payload.get("product_id")
+        if pid and pid not in seen:
+            seen[pid] = {
+                "product_id": pid,
+                "name":          pt.payload.get("name"),
+                "price":         pt.payload.get("price"),
+                "category":      pt.payload.get("category"),
+                "brand":         pt.payload.get("brand"),
+                "unit":          pt.payload.get("unit"),
+                "thumbnail_url": pt.payload.get("thumbnail_url"),
+            }
+    return {"success": True, "products": list(seen.values())}
+
+
+# ── /api/delete-product ───────────────────────────────────────────────────────
+@app.delete("/api/delete-product/{product_id}")
+async def delete_product(product_id: str):
+    safe_id = Path(product_id).name          # prevent path traversal
+    # Remove all Qdrant vectors whose payload matches this product_id
+    _qdrant.delete(
+        collection_name="products",
+        points_selector=Filter(
+            must=[FieldCondition(key="product_id", match=MatchValue(value=safe_id))]
+        ),
+    )
+    # Remove images from disk
+    product_dir = Path(IMAGES_PATH) / safe_id
+    if product_dir.exists():
+        shutil.rmtree(product_dir)
+    print(f"Deleted product {safe_id} from vector store and disk.")
+    return {"success": True, "message": f"Product '{safe_id}' deleted."}
 
 
 # ── /api/images ───────────────────────────────────────────────────────────────

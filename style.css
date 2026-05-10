@@ -969,6 +969,244 @@ body {
     gap: 0.75rem;
 }
 
+/* ── "Not this product?" correction button ─────────────────────────────── */
+.btn-wrong-product {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: rgba(239, 68, 68, 0.65);
+    padding: 0.28rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-top: 0.6rem;
+    font-family: 'Inter', sans-serif;
+    width: fit-content;
+}
+
+.btn-wrong-product:hover {
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* ── Similar modal body (flex container for multiple sections) ───────────── */
+.similar-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ── Section labels inside similar modal ────────────────────────────────── */
+.modal-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.75rem 0 0.5rem;
+    border-top: 1px solid var(--glass-border);
+}
+
+.modal-section-label:first-child { border-top: none; padding-top: 0; }
+
+/* ── Catalog product list (compact rows) ────────────────────────────────── */
+.catalog-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.catalog-grid::-webkit-scrollbar { width: 3px; }
+.catalog-grid::-webkit-scrollbar-track { background: transparent; }
+.catalog-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+.catalog-card {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.6rem 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    transition: var(--transition);
+}
+
+.catalog-card:hover { border-color: rgba(139, 92, 246, 0.3); }
+
+.catalog-card-info { flex: 1; min-width: 0; }
+
+.catalog-card-name {
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.catalog-card-meta {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    margin-top: 0.15rem;
+}
+
+.catalog-card-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.catalog-card-price {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 0.88rem;
+    font-family: 'Outfit', sans-serif;
+}
+
+.btn-add-catalog {
+    background: rgba(139, 92, 246, 0.12);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    color: var(--primary);
+    padding: 0.3rem 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+}
+
+.btn-add-catalog:hover {
+    background: rgba(139, 92, 246, 0.25);
+    color: white;
+}
+
+/* ── Manage catalog button (sidebar) ────────────────────────────────────── */
+.btn-manage-catalog {
+    width: 100%;
+    background: transparent;
+    border: 1px dashed rgba(255,255,255,0.12);
+    color: var(--text-muted);
+    padding: 0.55rem;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-top: 0.5rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.btn-manage-catalog:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+    color: var(--primary);
+    background: rgba(139, 92, 246, 0.05);
+}
+
+/* ── Manage catalog modal ────────────────────────────────────────────────── */
+.modal-container--wide { max-width: 760px; }
+
+.manage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.manage-list::-webkit-scrollbar { width: 3px; }
+.manage-list::-webkit-scrollbar-track { background: transparent; }
+.manage-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+.manage-card {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    animation: slideIn 0.2s ease-out;
+}
+
+.manage-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.manage-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.manage-info { flex: 1; min-width: 0; }
+
+.manage-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.manage-meta { color: var(--text-muted); font-size: 0.72rem; margin-bottom: 0.2rem; }
+
+.manage-price {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.88rem;
+    font-family: 'Outfit', sans-serif;
+}
+
+.manage-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.btn-delete-product {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    color: #f87171;
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: 'Inter', sans-serif;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.btn-delete-product:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.btn-delete-product:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .modal-container { padding: 1.25rem; max-height: 90vh; }

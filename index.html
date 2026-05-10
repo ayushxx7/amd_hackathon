@@ -42,6 +42,7 @@
                     </div>
                     <button class="btn-checkout" id="checkout-btn" disabled>Generate Bill</button>
                     <button class="btn-clear" id="clear-btn">Clear All</button>
+                    <button class="btn-manage-catalog" id="manage-catalog-btn">&#x1F5C2; Manage Custom Catalog</button>
                 </div>
             </div>
         </aside>
@@ -98,12 +99,12 @@
         <div class="modal-container">
             <div class="modal-header">
                 <div>
-                    <h2>Similar Products Found</h2>
-                    <p class="modal-subtitle">The AI couldn't match this item exactly, but found visually similar products in your custom catalog.</p>
+                    <h2 id="similar-modal-title">Similar Products Found</h2>
+                    <p class="modal-subtitle" id="similar-modal-subtitle">The AI couldn't match this item exactly, but found visually similar products in your custom catalog.</p>
                 </div>
                 <button class="modal-close" id="similar-close-btn">&#x2715;</button>
             </div>
-            <div class="similar-grid" id="similar-products-grid"></div>
+            <div class="similar-modal-body" id="similar-products-grid"></div>
             <div class="modal-footer">
                 <span class="modal-footer-text">Not what you're looking for?</span>
                 <button class="btn-secondary" id="add-new-from-similar">&#x2B; Add as New Product</button>
@@ -162,6 +163,20 @@
                     <div class="loader hidden" id="save-loader"></div>
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- ── Manage Custom Catalog Modal ───────────────────────────────────── -->
+    <div class="modal-overlay hidden" id="manage-modal">
+        <div class="modal-container modal-container--wide">
+            <div class="modal-header">
+                <div>
+                    <h2>Custom Product Catalog</h2>
+                    <p class="modal-subtitle">Products you've added manually. Delete any that are wrong or duplicates — this also removes the stored photos.</p>
+                </div>
+                <button class="modal-close" id="manage-close-btn">&#x2715;</button>
+            </div>
+            <div id="manage-products-list" class="manage-list"></div>
         </div>
     </div>
 
