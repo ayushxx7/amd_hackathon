@@ -88,6 +88,24 @@
         "price": 1200.00,
         "keywords": ["glutamine power", "supplement", "black jar", "gym powder", "fitness"],
         "category": "Supplements"
+    },
+    {
+        "id": "SKU-011",
+        "name": "Samsung Galaxy S23",
+        "brand": "Samsung",
+        "unit": "1 Unit",
+        "price": 97000.00,
+        "keywords": ["samsung galaxy s23", "smartphone", "android", "galaxy s23", "samsung phone"],
+        "category": "Electronics"
+    },
+    {
+        "id": "SKU-012",
+        "name": "Xiaomi Redmi Note 4",
+        "brand": "Xiaomi",
+        "unit": "1 Unit",
+        "price": 12000.00,
+        "keywords": ["xiaomi redmi note 4", "smartphone", "android", "redmi note 4", "xiaomi phone"],
+        "category": "Electronics"
     }
 ]
 
