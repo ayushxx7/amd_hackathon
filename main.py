@@ -18,7 +18,8 @@ from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, Fi
 import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MODEL_NAME     = "gemma4:e4b"
+MODEL_NAME          = "gemma4:e4b"
+CONFLICT_THRESHOLD  = 0.72   # SigLIP score above which a name disagreement triggers confirmation
 OLLAMA_HOST    = "http://127.0.0.1:11434"
 EMBED_MODEL    = "google/siglip-base-patch16-224"
 VECTOR_DIM     = 768
@@ -203,17 +204,18 @@ async def inference(file: UploadFile = File(...)):
         has_conflict = False
         if gemma_id != "unknown" and product_info and vector_results:
             top = vector_results[0]
-            g_words = set(product_info["name"].lower().split())
-            v_words = set((top["name"] or "").lower().split())
-            significant_overlap = {w for w in g_words & v_words if len(w) > 2}
-            names_differ = len(significant_overlap) == 0
-            print(
-                f"Hybrid check: Gemma→'{product_info['name']}' "
-                f"SigLIP→'{top['name']}' score={top['score']} "
-                f"overlap={significant_overlap} conflict={names_differ}"
-            )
-            if names_differ:
-                has_conflict = True
+            if top["score"] >= CONFLICT_THRESHOLD:
+                g_words = set(product_info["name"].lower().split())
+                v_words = set((top["name"] or "").lower().split())
+                significant_overlap = {w for w in g_words & v_words if len(w) > 2}
+                names_differ = len(significant_overlap) == 0
+                print(
+                    f"Hybrid check: Gemma→'{product_info['name']}' "
+                    f"SigLIP→'{top['name']}' score={top['score']} "
+                    f"overlap={significant_overlap} conflict={names_differ}"
+                )
+                if names_differ:
+                    has_conflict = True
 
         return {
             "success":      True,
