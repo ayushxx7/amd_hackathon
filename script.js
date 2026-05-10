@@ -90,7 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/inference', { method: 'POST', body: fd });
             if (!res.ok) throw new Error('Scan failed');
             const data = await res.json();
-            if (data.success && data.data.id !== 'unknown') {
+            if (data.success && data.has_conflict) {
+                handleConflict(data.data, data.vector_results || []);
+            } else if (data.success && data.data.id !== 'unknown') {
                 handleMatch(data.data);
             } else {
                 handleNoMatch(data.data.description || 'Item not found in catalog.', data.vector_results || []);
@@ -122,7 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/inference', { method: 'POST', body: fd });
             const data = await res.json();
-            if (data.success && data.data.id !== 'unknown') {
+            if (data.success && data.has_conflict) {
+                handleConflict(data.data, data.vector_results || []);
+            } else if (data.success && data.data.id !== 'unknown') {
                 handleMatch(data.data);
             } else {
                 handleNoMatch(data.data.description || 'Item not found in catalog.', data.vector_results || []);
@@ -186,6 +190,24 @@ document.addEventListener('DOMContentLoaded', () => {
             showAddModal();
             showNotification('Item not recognized — add it to your catalog', 'error');
         }
+    }
+
+    // ── Conflict handler (Gemma vs SigLIP disagree) ───────────────────────────
+    function handleConflict(gemmaResult, vectorResults) {
+        lastMatchedItem = gemmaResult;
+        lastItemInfo.innerHTML = `
+            <div class="no-match">
+                <p><strong style="color:#f59e0b">&#x26A0; AI Conflict Detected</strong></p>
+                <p class="placeholder-text">Gemma identified <strong>${gemmaResult.name}</strong> but the visual search disagrees. Please confirm below.</p>
+            </div>`;
+        showNotification('Gemma and visual search disagree — please confirm the product', 'warning');
+        showSimilarModal(
+            vectorResults,
+            [],
+            'AI Disagrees — Please Confirm',
+            'Gemma identified one product; visual search found another. Pick the correct one.',
+            gemmaResult
+        );
     }
 
     // ── Cart ──────────────────────────────────────────────────────────────────
@@ -257,14 +279,23 @@ document.addEventListener('DOMContentLoaded', () => {
         vectorResults,
         catalogItems = [],
         title    = 'Similar Products Found',
-        subtitle = "The AI couldn't match this item exactly. Pick one or add it as new."
+        subtitle = "The AI couldn't match this item exactly. Pick one or add it as new.",
+        gemmaResult = null
     ) {
         document.getElementById('similar-modal-title').textContent    = title;
         document.getElementById('similar-modal-subtitle').textContent = subtitle;
 
         let html = '';
+
+        // Gemma's identified product shown first with amber conflict styling
+        if (gemmaResult) {
+            html += `<div class="modal-section-label gemma-label">&#x1F916; Gemma identified this</div>
+                     <div class="similar-grid">${renderGemmaConflictCard(gemmaResult)}</div>`;
+        }
+
         if (vectorResults.length > 0) {
-            html += `<div class="modal-section-label">Visual matches from your custom catalog</div>
+            const lbl = gemmaResult ? 'Visual search found instead' : 'Visual matches from your custom catalog';
+            html += `<div class="modal-section-label">${lbl}</div>
                      <div class="similar-grid">${vectorResults.map(renderVectorCard).join('')}</div>`;
         }
         if (catalogItems.length > 0) {
@@ -278,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         similarGrid.innerHTML = html;
 
-        similarGrid.querySelectorAll('.btn-add-similar, .btn-add-catalog').forEach(btn => {
+        similarGrid.querySelectorAll('.btn-add-similar, .btn-add-catalog, .btn-add-gemma').forEach(btn => {
             btn.addEventListener('click', () => {
                 addToCart({ id: btn.dataset.id, name: btn.dataset.name, price: parseFloat(btn.dataset.price), unit: btn.dataset.unit });
                 closeSimilarModal();
@@ -287,6 +318,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         similarModal.classList.remove('hidden');
+    }
+
+    function renderGemmaConflictCard(item) {
+        return `
+            <div class="similar-card gemma-conflict-card">
+                <div class="similar-thumb gemma-conflict-thumb">&#x1F916;</div>
+                <div class="similar-card-body">
+                    <div class="similar-name">${item.name}</div>
+                    <div class="similar-meta">${[item.brand, item.unit].filter(Boolean).join(' · ')}</div>
+                    <div class="similar-score-bar">
+                        <div class="score-label"><span>Gemma confidence</span><span>${item.confidence || 'High'}</span></div>
+                        <div class="score-track"><div class="score-fill gemma-score-fill" style="width:85%"></div></div>
+                    </div>
+                    <div class="similar-price">&#x20B9;${Number(item.price).toFixed(2)}</div>
+                </div>
+                <button class="btn-add-gemma"
+                        data-id="${item.id}"
+                        data-name="${item.name.replace(/"/g, '&quot;')}"
+                        data-price="${item.price}"
+                        data-unit="${item.unit || 'N/A'}">Yes, this is correct</button>
+            </div>`;
     }
 
     function renderVectorCard(r) {

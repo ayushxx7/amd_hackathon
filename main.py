@@ -2,6 +2,7 @@ import io
 import json
 import uuid
 import shutil
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import List
@@ -17,7 +18,8 @@ from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, Fi
 import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MODEL_NAME     = "gemma4:e4b"
+MODEL_NAME          = "gemma4:e4b"
+CONFLICT_THRESHOLD  = 0.80   # SigLIP score above which a disagreement triggers user confirmation
 OLLAMA_HOST    = "http://127.0.0.1:11434"
 EMBED_MODEL    = "google/siglip-base-patch16-224"
 VECTOR_DIM     = 768
@@ -137,7 +139,6 @@ async def inference(file: UploadFile = File(...)):
     try:
         raw = await file.read()
 
-        # Optimise for Gemma
         img = Image.open(io.BytesIO(raw))
         img.thumbnail((512, 512))
         buf = io.BytesIO()
@@ -153,24 +154,33 @@ async def inference(file: UploadFile = File(...)):
             '"name": "Catalog Name", "description": "Short reason", "confidence": "High"}'
         )
 
-        response = await ollama_client.generate(
-            model=MODEL_NAME,
-            prompt=prompt,
-            images=[optimised],
-            stream=False,
-            format="json",
-            keep_alive="1h",
-            options={"temperature": 0.0, "num_predict": 50},
+        # ── Run Gemma and SigLIP in parallel ──────────────────────────────────
+        async def call_gemma() -> dict:
+            resp = await ollama_client.generate(
+                model=MODEL_NAME,
+                prompt=prompt,
+                images=[optimised],
+                stream=False,
+                format="json",
+                keep_alive="1h",
+                options={"temperature": 0.0, "num_predict": 50},
+            )
+            try:
+                return json.loads(resp["response"])
+            except Exception:
+                return {"id": "unknown", "name": "Unknown Item", "description": resp["response"]}
+
+        loop = asyncio.get_event_loop()
+        result, vector_results = await asyncio.gather(
+            call_gemma(),
+            loop.run_in_executor(None, _run_vector_search, optimised),
         )
 
-        try:
-            result = json.loads(response["response"])
-        except Exception:
-            result = {"id": "unknown", "name": "Unknown Item", "description": response["response"]}
-
-        # ── Gemma recognised the product ──
-        if result.get("id") != "unknown":
-            product_info = next((p for p in PRODUCTS if p["id"] == result["id"]), None)
+        # ── Enrich Gemma result with catalog metadata ─────────────────────────
+        gemma_id = result.get("id", "unknown")
+        product_info = None
+        if gemma_id != "unknown":
+            product_info = next((p for p in PRODUCTS if p["id"] == gemma_id), None)
             if product_info:
                 result.update(
                     price=product_info["price"],
@@ -178,20 +188,28 @@ async def inference(file: UploadFile = File(...)):
                     brand=product_info.get("brand", "Unknown"),
                     unit=product_info.get("unit", "N/A"),
                 )
-            return {"success": True, "data": result, "model": MODEL_NAME, "vector_results": []}
 
-        # ── Unknown → vector-store fallback ──
-        vector_results = []
-        try:
-            vector_results = _run_vector_search(optimised)
-        except Exception as ve:
-            print(f"Vector search error: {ve}")
+        # ── Conflict detection: Gemma matched, but SigLIP found something else ─
+        has_conflict = False
+        if gemma_id != "unknown" and product_info and vector_results:
+            top = vector_results[0]
+            if top["score"] >= CONFLICT_THRESHOLD:
+                g = product_info["name"].lower()
+                v = (top["name"] or "").lower()
+                # Not a conflict when names substantially overlap
+                if not (g in v or v in g):
+                    has_conflict = True
+                    print(
+                        f"Conflict: Gemma→'{product_info['name']}' "
+                        f"vs SigLIP→'{top['name']}' (score {top['score']})"
+                    )
 
         return {
-            "success": True,
-            "data": result,
-            "model": MODEL_NAME,
-            "vector_results": vector_results,
+            "success":      True,
+            "data":         result,
+            "model":        MODEL_NAME,
+            "vector_results": vector_results if (gemma_id == "unknown" or has_conflict) else [],
+            "has_conflict": has_conflict,
         }
 
     except Exception as e:

@@ -864,6 +864,49 @@ body {
     color: white;
 }
 
+/* ── Gemma conflict card (amber theme) ──────────────────────────────────── */
+.gemma-conflict-card {
+    border-color: rgba(245, 158, 11, 0.45);
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15), inset 0 0 20px rgba(245, 158, 11, 0.04);
+}
+
+.gemma-conflict-card:hover {
+    border-color: rgba(245, 158, 11, 0.7);
+}
+
+.gemma-conflict-thumb {
+    background: rgba(245, 158, 11, 0.08);
+    color: rgba(245, 158, 11, 0.7);
+}
+
+.gemma-score-fill {
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.btn-add-gemma {
+    width: 100%;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-top: none;
+    color: #f59e0b;
+    padding: 0.65rem;
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-family: 'Inter', sans-serif;
+}
+
+.btn-add-gemma:hover {
+    background: rgba(245, 158, 11, 0.28);
+    color: white;
+}
+
+.gemma-label {
+    color: #f59e0b !important;
+    border-top-color: rgba(245, 158, 11, 0.2) !important;
+}
+
 /* ── Add-product form ───────────────────────────────────────────────────── */
 .form-grid {
     display: grid;
