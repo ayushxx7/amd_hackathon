@@ -18,8 +18,7 @@ from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, Fi
 import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MODEL_NAME          = "gemma4:e4b"
-CONFLICT_THRESHOLD  = 0.80   # SigLIP score above which a disagreement triggers user confirmation
+MODEL_NAME     = "gemma4:e4b"
 OLLAMA_HOST    = "http://127.0.0.1:11434"
 EMBED_MODEL    = "google/siglip-base-patch16-224"
 VECTOR_DIM     = 768
@@ -163,12 +162,21 @@ async def inference(file: UploadFile = File(...)):
                 stream=False,
                 format="json",
                 keep_alive="1h",
-                options={"temperature": 0.0, "num_predict": 50},
+                options={"temperature": 0.0, "num_predict": 200},
             )
+            raw = resp["response"]
             try:
-                return json.loads(resp["response"])
+                return json.loads(raw)
             except Exception:
-                return {"id": "unknown", "name": "Unknown Item", "description": resp["response"]}
+                # Gemma sometimes wraps JSON in markdown fences or adds prose — extract it
+                import re
+                m = re.search(r'\{.*\}', raw, re.DOTALL)
+                if m:
+                    try:
+                        return json.loads(m.group())
+                    except Exception:
+                        pass
+                return {"id": "unknown", "name": "Unknown Item", "description": raw}
 
         loop = asyncio.get_event_loop()
         result, vector_results = await asyncio.gather(
@@ -190,19 +198,22 @@ async def inference(file: UploadFile = File(...)):
                 )
 
         # ── Conflict detection: Gemma matched, but SigLIP found something else ─
+        # Any SigLIP result that already passed SIM_THRESHOLD is confident enough.
+        # Use word-overlap on names as the real gate — not a second score threshold.
         has_conflict = False
         if gemma_id != "unknown" and product_info and vector_results:
             top = vector_results[0]
-            if top["score"] >= CONFLICT_THRESHOLD:
-                g = product_info["name"].lower()
-                v = (top["name"] or "").lower()
-                # Not a conflict when names substantially overlap
-                if not (g in v or v in g):
-                    has_conflict = True
-                    print(
-                        f"Conflict: Gemma→'{product_info['name']}' "
-                        f"vs SigLIP→'{top['name']}' (score {top['score']})"
-                    )
+            g_words = set(product_info["name"].lower().split())
+            v_words = set((top["name"] or "").lower().split())
+            significant_overlap = {w for w in g_words & v_words if len(w) > 2}
+            names_differ = len(significant_overlap) == 0
+            print(
+                f"Hybrid check: Gemma→'{product_info['name']}' "
+                f"SigLIP→'{top['name']}' score={top['score']} "
+                f"overlap={significant_overlap} conflict={names_differ}"
+            )
+            if names_differ:
+                has_conflict = True
 
         return {
             "success":      True,
