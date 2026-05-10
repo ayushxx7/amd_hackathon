@@ -43,3 +43,4 @@ huggingface_hub/
 # Temp files
 *.tmp
 *.bak
+qdrant_db/

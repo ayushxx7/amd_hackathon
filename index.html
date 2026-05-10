@@ -148,14 +148,23 @@
 
                 <div class="form-group">
                     <label>Product Photos <span class="required">*</span> <span class="hint">(up to 3 angles for better accuracy)</span></label>
+
+                    <div class="modal-camera-wrap">
+                        <video id="modal-camera-preview" autoplay playsinline muted></video>
+                    </div>
+                    <button type="button" id="capture-product-btn" class="btn-capture-photo">
+                        📸 Capture from Camera
+                    </button>
+
+                    <div class="photo-or-divider"><span>or upload from device</span></div>
+
                     <div class="image-upload-zone" id="upload-zone">
                         <input type="file" id="new-images-input" accept="image/*" multiple hidden>
-                        <div id="upload-placeholder">
-                            <span class="upload-icon">📷</span>
-                            <p id="upload-placeholder-text">Click to add photos</p>
-                        </div>
-                        <div class="image-preview-strip" id="image-preview-strip"></div>
+                        <span class="upload-icon">📁</span>
+                        <span>Click to browse files</span>
                     </div>
+
+                    <div class="image-preview-strip" id="image-preview-strip"></div>
                 </div>
 
                 <button type="submit" class="btn-primary btn-save" id="save-btn">

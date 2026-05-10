@@ -27,19 +27,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const addModal            = document.getElementById('add-modal');
     const addCloseBtn         = document.getElementById('add-close-btn');
     const addProductForm      = document.getElementById('add-product-form');
-    const newImagesInput      = document.getElementById('new-images-input');
-    const uploadZone          = document.getElementById('upload-zone');
-    const imagePreviewStrip   = document.getElementById('image-preview-strip');
-    const uploadPlaceholderText = document.getElementById('upload-placeholder-text');
-    const saveBtn             = document.getElementById('save-btn');
-    const saveLoader          = document.getElementById('save-loader');
+    const newImagesInput       = document.getElementById('new-images-input');
+    const uploadZone           = document.getElementById('upload-zone');
+    const imagePreviewStrip    = document.getElementById('image-preview-strip');
+    const saveBtn              = document.getElementById('save-btn');
+    const saveLoader           = document.getElementById('save-loader');
+    const captureProductBtn    = document.getElementById('capture-product-btn');
+    const modalCameraPreview   = document.getElementById('modal-camera-preview');
 
     // ── State ─────────────────────────────────────────────────────────────────
     let cart = [];
     let isAnalyzing = false;
-    let lastCapturedBlob = null;   // most recent camera/upload blob, reused in add-product form
-    let lastMatchedItem  = null;   // last item Gemma matched, used for wrong-product correction
-    let catalogProducts  = [];     // products.json items, fetched once on load
+    let lastCapturedBlob      = null;  // most recent scan blob, pre-populates add-product form
+    let lastMatchedItem       = null;  // last item Gemma matched, used for wrong-product correction
+    let catalogProducts       = [];    // products.json items, fetched once on load
+    let capturedProductBlobs  = [];    // camera captures taken inside the add-product modal
+    let pendingUploadFiles    = [];    // files picked via file-input (copied so we can remove individually)
+    let useScanCapture        = false; // whether the original scan blob is still included
 
     async function loadCatalog() {
         try {
@@ -225,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
             emptyCartMsg.classList.remove('hidden');
             cartItemsContainer.querySelectorAll('.cart-item').forEach(el => el.remove());
             checkoutBtn.disabled = true;
-            totalPriceSpan.textContent = '&#x20B9;0.00';
+            totalPriceSpan.textContent = '₹0.00';
             itemCountSpan.textContent = '0 items';
             return;
         }
@@ -253,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cartItemsContainer.appendChild(el);
         });
 
-        totalPriceSpan.textContent = `&#x20B9;${total.toFixed(2)}`;
+        totalPriceSpan.textContent = `₹${total.toFixed(2)}`;
         itemCountSpan.textContent  = `${totalQty} item${totalQty !== 1 ? 's' : ''}`;
         checkoutBtn.disabled = false;
     }
@@ -423,32 +427,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Add Product Modal ─────────────────────────────────────────────────────
+    function totalPhotoCount() {
+        return (useScanCapture ? 1 : 0) + capturedProductBlobs.length + pendingUploadFiles.length;
+    }
+
+    function refreshPhotoPreviews() {
+        imagePreviewStrip.innerHTML = '';
+
+        const makeWrap = (src, extraClass, onRemove) => {
+            const wrap = document.createElement('div');
+            wrap.className = 'preview-thumb-wrap';
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = `preview-thumb${extraClass ? ' ' + extraClass : ''}`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'preview-remove-btn';
+            btn.title = 'Remove';
+            btn.textContent = '×';
+            btn.addEventListener('click', onRemove);
+            wrap.appendChild(img);
+            wrap.appendChild(btn);
+            imagePreviewStrip.appendChild(wrap);
+        };
+
+        if (useScanCapture && lastCapturedBlob) {
+            makeWrap(URL.createObjectURL(lastCapturedBlob), 'captured', () => {
+                useScanCapture = false;
+                refreshPhotoPreviews();
+            });
+        }
+        capturedProductBlobs.forEach((b, i) => {
+            makeWrap(URL.createObjectURL(b), 'cam-capture', () => {
+                capturedProductBlobs.splice(i, 1);
+                refreshPhotoPreviews();
+            });
+        });
+        pendingUploadFiles.forEach((f, i) => {
+            makeWrap(URL.createObjectURL(f), '', () => {
+                pendingUploadFiles.splice(i, 1);
+                refreshPhotoPreviews();
+            });
+        });
+    }
+
     function showAddModal() {
         addProductForm.reset();
-        imagePreviewStrip.innerHTML = '';
         newImagesInput.value = '';
-
-        // Pre-populate captured image as the first preview photo
-        if (lastCapturedBlob) {
-            addPreviewImage(URL.createObjectURL(lastCapturedBlob), true);
-            uploadPlaceholderText.textContent = 'Click to add more photos';
-        } else {
-            uploadPlaceholderText.textContent = 'Click to add photos';
-        }
-
+        capturedProductBlobs = [];
+        pendingUploadFiles   = [];
+        useScanCapture       = !!lastCapturedBlob;
+        refreshPhotoPreviews();
+        modalCameraPreview.srcObject = webcam.srcObject || null;
         addModal.classList.remove('hidden');
     }
 
     function closeAddModal() {
         addModal.classList.add('hidden');
-    }
-
-    function addPreviewImage(src, isCaptured = false) {
-        const img = document.createElement('img');
-        img.src = src;
-        img.className = `preview-thumb${isCaptured ? ' captured' : ''}`;
-        img.title = isCaptured ? 'Captured photo' : 'Uploaded photo';
-        imagePreviewStrip.appendChild(img);
+        modalCameraPreview.srcObject = null;
     }
 
     addCloseBtn.addEventListener('click', closeAddModal);
@@ -457,16 +493,31 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadZone.addEventListener('click', () => newImagesInput.click());
 
     newImagesInput.addEventListener('change', () => {
-        const files = Array.from(newImagesInput.files).slice(0, 3);
+        const incoming = Array.from(newImagesInput.files);
+        const slots = 3 - totalPhotoCount();
+        pendingUploadFiles.push(...incoming.slice(0, slots));
+        newImagesInput.value = ''; // allow re-selecting same file
+        refreshPhotoPreviews();
+    });
 
-        // Keep captured thumb if it exists, replace file-upload thumbs
-        const capturedThumb = imagePreviewStrip.querySelector('.captured');
-        imagePreviewStrip.innerHTML = '';
-        if (capturedThumb) imagePreviewStrip.appendChild(capturedThumb);
-
-        files.forEach(f => addPreviewImage(URL.createObjectURL(f)));
-        const total = imagePreviewStrip.children.length;
-        uploadPlaceholderText.textContent = `${total} photo${total !== 1 ? 's' : ''} selected`;
+    captureProductBtn.addEventListener('click', () => {
+        if (totalPhotoCount() >= 3) {
+            showNotification('Maximum 3 photos allowed', 'warning');
+            return;
+        }
+        if (!webcam.videoWidth) {
+            showNotification('Camera not available', 'error');
+            return;
+        }
+        const ctx = captureCanvas.getContext('2d');
+        captureCanvas.width  = webcam.videoWidth;
+        captureCanvas.height = webcam.videoHeight;
+        ctx.drawImage(webcam, 0, 0);
+        captureCanvas.toBlob(blob => {
+            capturedProductBlobs.push(blob);
+            refreshPhotoPreviews();
+            showNotification('Photo captured');
+        }, 'image/jpeg', 0.85);
     });
 
     addProductForm.addEventListener('submit', async e => {
@@ -490,15 +541,17 @@ document.addEventListener('DOMContentLoaded', () => {
         fd.append('brand',    brand);
         fd.append('unit',     unit);
 
-        const userFiles = Array.from(newImagesInput.files).slice(0, 3);
-        if (userFiles.length > 0) {
-            userFiles.forEach(f => fd.append('images', f));
-        } else if (lastCapturedBlob) {
-            fd.append('images', lastCapturedBlob, 'captured.jpg');
-        } else {
+        const allImages = [
+            ...(useScanCapture && lastCapturedBlob ? [{ blob: lastCapturedBlob, name: 'captured.jpg' }] : []),
+            ...capturedProductBlobs.map((b, i) => ({ blob: b, name: `cam_${i + 1}.jpg` })),
+            ...pendingUploadFiles.map(f => ({ blob: f, name: f.name })),
+        ].slice(0, 3);
+
+        if (allImages.length === 0) {
             showNotification('Please add at least one photo.', 'error');
             return;
         }
+        allImages.forEach(({ blob, name }) => fd.append('images', blob, name));
 
         setSaveLoading(true);
         try {
