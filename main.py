@@ -1,4 +1,5 @@
 import io
+import re
 import json
 import uuid
 import shutil
@@ -18,15 +19,15 @@ from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, Fi
 import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
-MODEL_NAME          = "gemma4:e4b"
-CONFLICT_THRESHOLD  = 0.72   # SigLIP score above which a name disagreement triggers confirmation
-OLLAMA_HOST    = "http://127.0.0.1:11434"
-EMBED_MODEL    = "google/siglip-base-patch16-224"
-VECTOR_DIM     = 768
-QDRANT_PATH    = "./qdrant_db"
-IMAGES_PATH    = "./product_images"
-SIM_THRESHOLD  = 0.60   # minimum cosine similarity to return a result
-TOP_K          = 5
+MODEL_NAME         = "gemma4:e4b"
+OLLAMA_HOST        = "http://127.0.0.1:11434"
+EMBED_MODEL        = "google/siglip-base-patch16-224"
+VECTOR_DIM         = 768
+QDRANT_PATH        = "./qdrant_db"
+IMAGES_PATH        = "./product_images"
+SIM_THRESHOLD      = 0.60   # minimum cosine similarity to return a result
+CONFLICT_THRESHOLD = 0.72   # SigLIP score above which a name mismatch triggers user confirmation
+TOP_K              = 5
 
 ollama_client = ollama.AsyncClient(host=OLLAMA_HOST)
 
@@ -43,19 +44,17 @@ _qdrant: QdrantClient       = None
 
 
 def embed_image(image_bytes: bytes) -> list:
-    """Return a normalised SigLIP image embedding as a Python list."""
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     inputs = _processor(images=img, return_tensors="pt")
     with torch.no_grad():
-        # Use the vision encoder directly; .pooler_output is a plain tensor
+        # .vision_model + .pooler_output avoids the BaseModelOutputWithPooling wrapper
         vision_out = _model.vision_model(pixel_values=inputs["pixel_values"])
-        features = vision_out.pooler_output          # shape: [1, 768]
+        features = vision_out.pooler_output          # [1, 768]
         features = features / features.norm(dim=-1, keepdim=True)
     return features[0].cpu().tolist()
 
 
 def _run_vector_search(image_bytes: bytes) -> list:
-    """Encode image, query Qdrant, return a deduplicated ranked list."""
     embedding = embed_image(image_bytes)
     hits = _qdrant.query_points(
         collection_name="products",
@@ -169,8 +168,7 @@ async def inference(file: UploadFile = File(...)):
             try:
                 return json.loads(raw)
             except Exception:
-                # Gemma sometimes wraps JSON in markdown fences or adds prose — extract it
-                import re
+                # Gemma occasionally wraps JSON in markdown fences or adds surrounding prose
                 m = re.search(r'\{.*\}', raw, re.DOTALL)
                 if m:
                     try:
@@ -179,7 +177,7 @@ async def inference(file: UploadFile = File(...)):
                         pass
                 return {"id": "unknown", "name": "Unknown Item", "description": raw}
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result, vector_results = await asyncio.gather(
             call_gemma(),
             loop.run_in_executor(None, _run_vector_search, optimised),

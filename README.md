@@ -1,261 +1,172 @@
-# KiranaAI — Visual Billing Counter with Vector-Powered Product Recognition
+# KiranaAI — Visual Billing Counter
 
-A local grocery store billing system that uses **multimodal AI** to recognize products from photos and automatically populate the bill. Built for offline-first operation in small Indian retail shops.
+A local grocery/retail billing system that uses multimodal AI to identify products from photos and populate the bill automatically. Built for offline-first operation in small Indian retail shops.
 
-## 🎯 Why This System?
+## The Problem
 
-Traditional billing requires manual entry for every item. **KiranaAI** eliminates this:
+Manual billing is slow and error-prone. Barcode scanners require label infrastructure. KiranaAI instead scans a product photo and adds it to the bill — no barcodes needed.
 
-1. **Primary Classifier (Gemma 4)**: Fast, accurate recognition for known products
-2. **Fallback Vector Search (SigLIP + Qdrant)**: Handles unknown/new SKUs without retraining
-3. **Correction Flow**: When Gemma misclassifies, users instantly find the right product
-4. **Custom Catalog**: Shop staff can add new products as they arrive
+The harder sub-problem: **AI models go stale**. Gemma 4 knows common products from training, but a new local brand or a recently launched SKU is invisible to it. The system must handle these gracefully without needing retraining.
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-User scans product with camera
-    ↓
-[Gemma 4 multimodal LLM via Ollama]
-    ↓
-    ├─ Recognized (confidence) → Add to bill ✓
-    │
-    └─ Unknown → Vector Search Fallback
-        ↓
-        [SigLIP image encoder + Qdrant vector DB]
-        ↓
-        ├─ Found similar products → User picks correct one or adds as new
-        └─ Not found → Prompt user to add as new product
+Scan product image
+        │
+        ├──────────────────────────┐
+        ▼                          ▼
+  Gemma 4 (LLM)            SigLIP + Qdrant
+  catalog lookup          vector similarity
+  (known 12 SKUs)         (custom products)
+        │                          │
+        └──────────┬───────────────┘
+                   ▼
+         Three possible outcomes:
+         
+  1. Gemma matched, no SigLIP conflict
+     → auto-add to cart
+     
+  2. Gemma says "unknown"
+     → show SigLIP results from custom catalog
+     → user picks or adds as new product
+     
+  3. Gemma matched BUT SigLIP found a different
+     product at score ≥ 0.72 with no name overlap
+     → conflict: user confirms which is correct
 ```
 
-## 🛠️ Tech Stack
+### Why two models?
 
-| Component | Choice | Why |
-|-----------|--------|-----|
-| **Backend** | FastAPI + Uvicorn | Async, lightweight, perfect for local deployment |
-| **Primary Model** | Gemma 4 (via Ollama) | Local inference, no cloud API calls, privacy-first |
-| **Image Embeddings** | SigLIP 2 (google/siglip-base-patch16-224) | Multilingual, 2025 SOTA for product retrieval, 768-dim vectors |
-| **Vector DB** | Qdrant (local mode) | Persistent, metadata filtering, Python-friendly, no Docker needed |
-| **Frontend** | Vanilla HTML/CSS/JS | Zero dependencies, glassmorphism dark theme, responsive |
-| **Image Storage** | Filesystem + Qdrant metadata | Avoids DB bloat, enables HTTP serving, simple backup |
+| Model | Strength | Weakness |
+|-------|----------|----------|
+| **Gemma 4** (via Ollama) | Fast, reasons from training on millions of products | Can't learn new products without retraining; sometimes maps visually similar products to the wrong SKU |
+| **SigLIP** (google/siglip-base-patch16-224) | Purely visual, reasons from actual photos you've added | Only knows products you've explicitly indexed |
 
-## 🚀 Features
+SigLIP acts as both a fallback (when Gemma fails) and a validator (when Gemma misclassifies confidently). If SigLIP has a photo of the correct product and its cosine similarity score is high enough, it overrides Gemma's guess by triggering a human confirmation step.
 
-### Core Billing
-- **Camera-based product scanning** with live video overlay
-- **File upload fallback** for sample images
-- **Real-time cart management** with quantity tracking and total calculation
-- **Bill generation** with item count and amount summary
+### Conflict detection
 
-### Intelligent Recognition
-- **Gemma 4 classification** on known products (SKU-001 through SKU-012 in catalog)
-- **Vector-store fallback** for unknown items — automatically searches custom catalog
-- **Similarity scoring** — shows visual match % (60–100%) when multiple candidates exist
+When Gemma identifies a catalog item and SigLIP simultaneously finds a **different** product in the custom catalog at score ≥ 0.72 (with no significant word overlap in the names), the system stops and shows the user both candidates. Neither is auto-added. The user picks, and the correct item goes into the bill.
 
-### Misclassification Recovery
-- **"Not this product?" button** on every recognized item
-- **One-click correction**: removes wrong item, opens similar products modal
-- **Dual view**: shows both custom-catalog vector matches + full products.json for easy selection
-- **No dead ends**: unknown items can always be added for next time
+This catches the "Gemma confidently misidentifies visually similar products" failure mode — e.g., Gemma calling a Redmi Note 4 a Samsung Galaxy S23 because both are candybar smartphones.
 
-### Custom Catalog Management
-- **Add new products** with 1–3 angle photos, name, price, category, brand, unit
-- **Vector-indexed immediately** — next scan of similar item finds it
-- **Manage Custom Catalog** button in sidebar
-- **Delete products** with confirmation — removes both vectors and photos from disk
+## Tech Stack
 
-### Resilience
-- **Local Ollama + SigLIP** — works without internet (after first model download)
-- **Qdrant local DB** — no server dependency, persistent across restarts
-- **Graceful unknown handling** — never stuck, always can add/search
+| Component | Choice |
+|-----------|--------|
+| Backend | FastAPI + Uvicorn |
+| Primary classifier | Gemma 4 (`gemma4:e4b`) via Ollama |
+| Image embeddings | SigLIP (`google/siglip-base-patch16-224`, 768-dim) |
+| Vector DB | Qdrant (local file mode, no Docker) |
+| Frontend | Vanilla HTML/CSS/JS |
+| Image storage | Filesystem (`./product_images/`) |
 
-## 📊 How It Works
+## User Flows
 
-### Scenario 1: Known Product (Happy Path)
+### Happy path — known product
 ```
 Scan Samsung Galaxy S23 box
-  → Gemma recognizes it (high confidence)
-  → Shows price ₹97,000, SKU-011, category Electronics
-  → User clicks "Add to Bill" (auto-added)
-  → Item appears in cart
+→ Gemma returns SKU-011, SigLIP has nothing conflicting
+→ Product auto-added to bill with price
+→ "Not this product?" button shown for manual override
 ```
 
-### Scenario 2: Unknown/New Product
+### Unknown product
 ```
-Scan a brand-new snack brand
-  → Gemma returns "unknown"
-  → System runs vector search on captured image
-  → Finds 2–3 visually similar products in custom catalog (if any)
-  → Shows "Similar Products Found" modal
-  → User picks closest match OR clicks "Add as New Product"
-  → If new: enters name/price/category, uploads 1–3 photos
-  → Product saved to vector DB immediately
+Scan a new local brand snack
+→ Gemma returns "unknown"
+→ SigLIP searches custom catalog, finds similar items if any
+→ User picks from visual matches OR clicks "Add as New Product"
+→ Fills name/price/category, uploads 1–3 photos
+→ Product indexed in Qdrant immediately
+→ Next scan of same product: SigLIP finds it
 ```
 
-### Scenario 3: Misclassification Correction
+### Misclassification (conflict)
 ```
 Scan Xiaomi Redmi Note 4
-  → Gemma wrongly classifies as Samsung Galaxy S23
-  → User clicks "Not this product?" button
-  → Item removed from cart
-  → Modal opens with vector-similar products + all catalog products
-  → User finds and clicks "Xiaomi Redmi Note 4"
-  → Correct product added to cart
+→ Gemma returns Samsung Galaxy S23 (wrong, high confidence)
+→ SigLIP finds Redmi Note 4 at 0.84 (≥ 0.72 threshold)
+→ Names have zero word overlap → conflict triggered
+→ Modal shows: Gemma's guess (amber) + SigLIP's match (purple)
+→ User clicks the correct product → added to bill
 ```
 
-## 🔧 Setup & Running
+### Manual correction
+```
+Gemma auto-added Samsung S23 but it's wrong
+→ User clicks "✏ Not this product?"
+→ Item removed from cart
+→ Vector search runs on same captured image
+→ Modal shows SigLIP matches + full product catalog
+→ User picks correct product
+```
+
+## Setup
 
 ### Prerequisites
-- Python 3.13+
-- Ollama running locally with `gemma4:e4b` model
-- ~2GB free disk (for SigLIP model cache + vector DB)
+- Python 3.10+
+- Ollama running locally with `gemma4:e4b` pulled
 
-### Installation
+### Run
 
 ```bash
 cd /home/dedsec/Kirana/Plan2/amd_hackathon
 bash run.sh
 ```
 
-**What `run.sh` does:**
-1. Creates virtual environment (venv)
-2. Installs PyTorch CPU-only variant (faster download than CUDA)
-3. Installs remaining dependencies (transformers, qdrant-client, fastapi, ollama, etc.)
-4. Kills any process on port 6001
-5. Starts FastAPI server on `http://0.0.0.0:6001`
+`run.sh` creates a venv, installs PyTorch CPU-only (to avoid a 2 GB CUDA download), installs remaining deps, kills anything on port 6001, and starts the server.
 
-**On first run:**
-- SigLIP model (~400MB) downloads from HuggingFace (one-time)
-- Qdrant collection created at `./qdrant_db/`
-- Product images stored at `./product_images/`
+Open `http://localhost:6001` in a browser.
 
-### Usage
+**First run:** SigLIP (~400 MB) downloads from HuggingFace once and caches. Qdrant collection is created empty.
 
-Open browser to `http://localhost:6001`
-
-1. **Scan & Add Item** — Capture from webcam or upload image
-2. **Handle results**:
-   - ✅ Recognized → Auto-added to cart
-   - ❓ Unknown → Vector search, pick similar or add new
-   - ❌ Wrong → Click "Not this product?", find correct one
-3. **Manage Custom Catalog** — View, review, delete added products
-4. **Generate Bill** — Checkout with total amount
-
-## 🗂️ Project Structure
-
-```
-amd_hackathon/
-├── main.py              # FastAPI backend (291 lines)
-│   ├── Gemma 4 inference endpoint
-│   ├── Vector search (SigLIP + Qdrant)
-│   ├── Product add/delete/list endpoints
-│   └── Image serving
-├── script.js            # Frontend logic (560+ lines)
-│   ├── Webcam/upload handling
-│   ├── Scan → classify flow
-│   ├── Similar products modal
-│   ├── Wrong product correction
-│   ├── Custom catalog management
-│   └── Cart management
-├── index.html           # UI markup (177 lines)
-│   ├── Sidebar (cart, checkout)
-│   ├── Camera feed + overlay
-│   ├── Last scanned item info
-│   ├── Similar products modal
-│   ├── Add product form
-│   └── Manage catalog modal
-├── style.css            # Glassmorphism dark theme (1150+ lines)
-├── products.json        # Initial catalog (12 SKUs)
-├── requirements.txt     # Dependencies
-├── run.sh               # Startup script
-└── .gitignore           # VCS exclusions
-```
-
-## 🔌 API Endpoints
+## API
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/inference` | Send image → Gemma classification + vector fallback |
-| POST | `/api/vector-search` | Image → Vector search only (for corrections) |
-| POST | `/api/add-product` | Add new product with images to vector DB |
-| GET | `/api/catalog` | Fetch products.json |
-| GET | `/api/vector-products` | List all custom products in vector DB |
-| DELETE | `/api/delete-product/{id}` | Remove product + images from system |
-| GET | `/api/images/{id}/{file}` | Serve product thumbnail/photos |
-| GET | `/` | Serve UI |
+| `POST` | `/api/inference` | Image → Gemma + SigLIP parallel classification |
+| `POST` | `/api/vector-search` | Image → SigLIP-only search (used by correction flow) |
+| `POST` | `/api/add-product` | Add new product with photos to vector DB |
+| `GET`  | `/api/catalog` | Fetch the static 12-SKU products.json |
+| `GET`  | `/api/vector-products` | List all custom products in Qdrant |
+| `DELETE` | `/api/delete-product/{id}` | Remove product vectors + photos from disk |
+| `GET`  | `/api/images/{id}/{file}` | Serve product thumbnail/photos |
 
-## 📦 Dependencies
+## Configuration (main.py)
 
-**Backend:**
-- `fastapi` — Web framework
-- `uvicorn` — ASGI server
-- `ollama` — Gemma 4 client
-- `transformers` — SigLIP processor + model
-- `torch` — PyTorch (CPU)
-- `qdrant-client` — Vector DB client
-- `pillow` — Image processing
-- `python-multipart` — Form data parsing
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SIM_THRESHOLD` | `0.60` | Minimum cosine similarity for SigLIP to return a result |
+| `CONFLICT_THRESHOLD` | `0.72` | SigLIP score above which a name disagreement triggers user confirmation |
+| `TOP_K` | `5` | Max results returned from vector search |
+| `MODEL_NAME` | `gemma4:e4b` | Ollama model tag |
 
-**Frontend:**
-- Vanilla JavaScript (no npm, no bundler)
-- Modern CSS3 (flexbox, grid, backdrop-filter)
+## Project Structure
 
-## 🎨 UI/UX Features
+```
+amd_hackathon/
+├── main.py           # FastAPI backend — inference, vector ops, file serving
+├── script.js         # Frontend — scan flow, cart, modals, conflict UI
+├── index.html        # UI markup
+├── style.css         # Glassmorphism dark theme
+├── products.json     # Static 12-SKU catalog (what Gemma is prompted with)
+├── requirements.txt  # Python dependencies (torch installed separately)
+├── run.sh            # One-command setup and start
+├── qdrant_db/        # Qdrant persistent storage (gitignored)
+└── product_images/   # Stored product photos (gitignored)
+```
 
-- **Glassmorphism dark theme** — modern, readable, low CPU for mobile displays
-- **Animated scanner overlay** — visual feedback that camera is scanning
-- **Real-time status badge** — "Identifying..." during inference
-- **Toast notifications** — success/warning/error messages fade in/out
-- **Responsive design** — works on tablets and phones (tested 16:9 ratio)
-- **Accessibility** — keyboard navigation on modals, semantic HTML
+## Performance
 
-## ⚡ Performance
+- Gemma inference: ~2–4s per image (CPU, local Ollama)
+- SigLIP encoding: ~1s per image (CPU)
+- Qdrant search: ~5ms for 1000 vectors
+- Both models run in parallel — total latency is max(Gemma, SigLIP), not sum
 
-- **Gemma inference**: ~2–4s per image (CPU, local Ollama)
-- **SigLIP encoding**: ~1s per image (CPU)
-- **Qdrant vector search**: ~5ms for 1000 vectors
-- **UI responsiveness**: <100ms interactions
-- **Image optimization**: 512×512 JPEG @ 75% before inference
+## Notes
 
-## 🛡️ Data Privacy & Security
-
-- **All inference is local** — no images sent to cloud
-- **No user accounts** — works offline, no tracking
-- **Vector DB is persistent** — survives restarts, backed up locally
-- **Image path validation** — prevents directory traversal attacks
-- **CORS open for development** — should be locked to localhost in production
-
-## 🔮 Future Enhancements
-
-1. **OCR text matching** — use Tesseract to match packaging text (resolve similar-looking variants)
-2. **Inventory tracking** — log scans to track stock depletion
-3. **Batch operations** — scan 10 items at once, bulk bill generation
-4. **Barcode fallback** — add barcode scanner for items with no visual distinctiveness
-5. **Multi-language support** — Devanagari, Tamil, Telugu product names
-6. **Mobile app** — React Native or Flutter for mobile checkout
-7. **Analytics** — most-scanned items, misclassification rates
-8. **Fine-tuning** — adapt SigLIP to your specific store's products after 100+ scans
-
-## 📝 Notes
-
-- **First run is slow**: SigLIP downloads ~400MB from HuggingFace. Cached after that.
-- **Gemma must be running**: Start Ollama before starting the app.
-- **Vector store grows over time**: Every new product added increases similarity search coverage.
-- **Similarity threshold is tunable**: Edit `SIM_THRESHOLD` in `main.py` (default: 0.60) to control match strictness.
-
-## 🤝 Contributing
-
-To add features:
-1. Sketch the flow (user interactions, API calls)
-2. Add backend endpoint if needed
-3. Update frontend modals/logic
-4. Add CSS for new UI elements
-5. Test with real scans in store conditions
-
-## 📄 License
-
-Built for Bharat's retailers. Use freely, improve it, share it.
-
----
-
-**Questions?** Check the logs in `stdout` or add `print()` statements in `main.py` to debug inference results.
+- **Adding photos improves accuracy**: the more angles you add for a product (up to 3), the more vectors are indexed, improving SigLIP's recall for that product.
+- **The custom vector store grows over time**: each new product add increases coverage for future misclassifications.
+- **Threshold tuning**: if you're getting too many false conflicts (SigLIP flagging correctly-identified items), raise `CONFLICT_THRESHOLD`. If genuine conflicts are being missed, lower it.
+- **Data stays local**: all inference runs on-device via Ollama and local SigLIP. No images sent to cloud.

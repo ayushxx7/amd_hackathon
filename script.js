@@ -194,7 +194,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Conflict handler (Gemma vs SigLIP disagree) ───────────────────────────
     function handleConflict(gemmaResult, vectorResults) {
-        lastMatchedItem = gemmaResult;
         lastItemInfo.innerHTML = `
             <div class="no-match">
                 <p><strong style="color:#f59e0b">&#x26A0; AI Conflict Detected</strong></p>
