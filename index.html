@@ -28,9 +28,8 @@
                     <h2>Current Bill</h2>
                     <span class="item-count" id="item-count">0 items</span>
                 </div>
-                
+
                 <div class="cart-items" id="cart-items">
-                    <!-- Items will appear here -->
                     <div class="empty-cart" id="empty-cart">
                         <p>No items added yet</p>
                     </div>
@@ -43,20 +42,21 @@
                     </div>
                     <button class="btn-checkout" id="checkout-btn" disabled>Generate Bill</button>
                     <button class="btn-clear" id="clear-btn">Clear All</button>
+                    <button class="btn-manage-catalog" id="manage-catalog-btn">&#x1F5C2; Manage Custom Catalog</button>
                 </div>
             </div>
         </aside>
 
         <section class="main-content">
             <div class="camera-section">
-                <div class="camera-wrapper glass-card">
+                <div class="camera-wrapper">
                     <video id="webcam" autoplay playsinline></video>
                     <canvas id="capture-canvas" hidden></canvas>
                     <div class="camera-overlay">
                         <div class="scanner-line"></div>
                         <div class="focus-brackets"></div>
                     </div>
-                    
+
                     <div class="detection-status hidden" id="detection-status">
                         <div class="status-badge">
                             <span class="status-dot"></span>
@@ -80,7 +80,7 @@
             </div>
 
             <div class="info-section">
-                <div class="glass-card info-card">
+                <div class="info-card">
                     <div class="info-header">
                         <h3>Last Scanned Item</h3>
                     </div>
@@ -93,6 +93,101 @@
     </main>
 
     <div class="notification-container" id="notification-container"></div>
+
+    <!-- ── Similar Products Modal ─────────────────────────────────────── -->
+    <div class="modal-overlay hidden" id="similar-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div>
+                    <h2 id="similar-modal-title">Similar Products Found</h2>
+                    <p class="modal-subtitle" id="similar-modal-subtitle">The AI couldn't match this item exactly, but found visually similar products in your custom catalog.</p>
+                </div>
+                <button class="modal-close" id="similar-close-btn">&#x2715;</button>
+            </div>
+            <div class="similar-modal-body" id="similar-products-grid"></div>
+            <div class="modal-footer">
+                <span class="modal-footer-text">Not what you're looking for?</span>
+                <button class="btn-secondary" id="add-new-from-similar">&#x2B; Add as New Product</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add New Product Modal ──────────────────────────────────────── -->
+    <div class="modal-overlay hidden" id="add-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div>
+                    <h2>Add New Product</h2>
+                    <p class="modal-subtitle">Save this item to your catalog so the system can recognize it next time automatically.</p>
+                </div>
+                <button class="modal-close" id="add-close-btn">&#x2715;</button>
+            </div>
+            <form id="add-product-form" novalidate>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="new-name">Product Name <span class="required">*</span></label>
+                        <input type="text" id="new-name" placeholder="e.g. Amul Butter 500g" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-price">Price (₹) <span class="required">*</span></label>
+                        <input type="number" id="new-price" placeholder="0.00" min="0" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-category">Category</label>
+                        <input type="text" id="new-category" placeholder="e.g. Dairy, Snacks">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-brand">Brand</label>
+                        <input type="text" id="new-brand" placeholder="e.g. Amul">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-unit">Unit / Size</label>
+                        <input type="text" id="new-unit" placeholder="e.g. 500g, 1L, 1pc">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Product Photos <span class="required">*</span> <span class="hint">(up to 3 angles for better accuracy)</span></label>
+
+                    <div class="modal-camera-wrap">
+                        <video id="modal-camera-preview" autoplay playsinline muted></video>
+                    </div>
+                    <button type="button" id="capture-product-btn" class="btn-capture-photo">
+                        📸 Capture from Camera
+                    </button>
+
+                    <div class="photo-or-divider"><span>or upload from device</span></div>
+
+                    <div class="image-upload-zone" id="upload-zone">
+                        <input type="file" id="new-images-input" accept="image/*" multiple hidden>
+                        <span class="upload-icon">📁</span>
+                        <span>Click to browse files</span>
+                    </div>
+
+                    <div class="image-preview-strip" id="image-preview-strip"></div>
+                </div>
+
+                <button type="submit" class="btn-primary btn-save" id="save-btn">
+                    <span class="btn-text">Save &amp; Add to Cart</span>
+                    <div class="loader hidden" id="save-loader"></div>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Manage Custom Catalog Modal ───────────────────────────────────── -->
+    <div class="modal-overlay hidden" id="manage-modal">
+        <div class="modal-container modal-container--wide">
+            <div class="modal-header">
+                <div>
+                    <h2>Custom Product Catalog</h2>
+                    <p class="modal-subtitle">Products you've added manually. Delete any that are wrong or duplicates — this also removes the stored photos.</p>
+                </div>
+                <button class="modal-close" id="manage-close-btn">&#x2715;</button>
+            </div>
+            <div id="manage-products-list" class="manage-list"></div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

@@ -3,3 +3,6 @@ uvicorn
 ollama
 python-multipart
 pillow
+transformers>=4.37.0
+qdrant-client
+sentencepiece

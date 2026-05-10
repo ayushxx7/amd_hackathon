@@ -1,123 +1,142 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const webcam = document.getElementById('webcam');
-    const captureCanvas = document.getElementById('capture-canvas');
-    const scanBtn = document.getElementById('scan-btn');
-    const lastItemInfo = document.getElementById('last-item-info');
-    const cartItemsContainer = document.getElementById('cart-items');
-    const emptyCartMsg = document.getElementById('empty-cart');
-    const itemCountSpan = document.getElementById('item-count');
-    const totalPriceSpan = document.getElementById('total-price');
-    const checkoutBtn = document.getElementById('checkout-btn');
-    const clearBtn = document.getElementById('clear-btn');
-    const uploadBtn = document.getElementById('upload-btn');
-    const fileInput = document.getElementById('file-input');
-    const detectionStatus = document.getElementById('detection-status');
-    const statusText = document.getElementById('status-text');
+
+    // ── DOM refs ─────────────────────────────────────────────────────────────
+    const webcam              = document.getElementById('webcam');
+    const captureCanvas       = document.getElementById('capture-canvas');
+    const scanBtn             = document.getElementById('scan-btn');
+    const lastItemInfo        = document.getElementById('last-item-info');
+    const cartItemsContainer  = document.getElementById('cart-items');
+    const emptyCartMsg        = document.getElementById('empty-cart');
+    const itemCountSpan       = document.getElementById('item-count');
+    const totalPriceSpan      = document.getElementById('total-price');
+    const checkoutBtn         = document.getElementById('checkout-btn');
+    const clearBtn            = document.getElementById('clear-btn');
+    const uploadBtn           = document.getElementById('upload-btn');
+    const fileInput           = document.getElementById('file-input');
+    const detectionStatus     = document.getElementById('detection-status');
+    const statusText          = document.getElementById('status-text');
     const notificationContainer = document.getElementById('notification-container');
 
+    // Similar-products modal
+    const similarModal        = document.getElementById('similar-modal');
+    const similarGrid         = document.getElementById('similar-products-grid');
+    const similarCloseBtn     = document.getElementById('similar-close-btn');
+    const addNewFromSimilarBtn = document.getElementById('add-new-from-similar');
+
+    // Add-product modal
+    const addModal            = document.getElementById('add-modal');
+    const addCloseBtn         = document.getElementById('add-close-btn');
+    const addProductForm      = document.getElementById('add-product-form');
+    const newImagesInput       = document.getElementById('new-images-input');
+    const uploadZone           = document.getElementById('upload-zone');
+    const imagePreviewStrip    = document.getElementById('image-preview-strip');
+    const saveBtn              = document.getElementById('save-btn');
+    const saveLoader           = document.getElementById('save-loader');
+    const captureProductBtn    = document.getElementById('capture-product-btn');
+    const modalCameraPreview   = document.getElementById('modal-camera-preview');
+
+    // ── State ─────────────────────────────────────────────────────────────────
     let cart = [];
     let isAnalyzing = false;
+    let lastCapturedBlob      = null;  // most recent scan blob, pre-populates add-product form
+    let lastMatchedItem       = null;  // last item Gemma matched, used for wrong-product correction
+    let catalogProducts       = [];    // products.json items, fetched once on load
+    let capturedProductBlobs  = [];    // camera captures taken inside the add-product modal
+    let pendingUploadFiles    = [];    // files picked via file-input (copied so we can remove individually)
+    let useScanCapture        = false; // whether the original scan blob is still included
 
-    // Initialize Webcam
+    async function loadCatalog() {
+        try {
+            const res = await fetch('/api/catalog');
+            catalogProducts = (await res.json()).products || [];
+        } catch(e) { console.error('Failed to load catalog:', e); }
+    }
+    loadCatalog();
+
+    // ── Webcam ───────────────────────────────────────────────────────────────
     async function initWebcam() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
             });
             webcam.srcObject = stream;
         } catch (err) {
-            console.error("Error accessing webcam:", err);
-            showNotification("Could not access camera. Please check permissions.");
+            console.error('Camera error:', err);
+            showNotification('Could not access camera. Check permissions.', 'error');
         }
     }
-
     initWebcam();
 
-    // Capture and Scan
+    // ── Scan ─────────────────────────────────────────────────────────────────
     scanBtn.addEventListener('click', async () => {
         if (isAnalyzing) return;
-        
         setLoading(true);
         detectionStatus.classList.remove('hidden');
-        statusText.textContent = "Identifying...";
+        statusText.textContent = 'Identifying...';
 
-        // Capture frame and resize for faster inference
-        const MAX_SIZE = 256;
-        let width = webcam.videoWidth;
-        let height = webcam.videoHeight;
-        
-        if (width > height) {
-            if (width > MAX_SIZE) {
-                height = Math.round(height * (MAX_SIZE / width));
-                width = MAX_SIZE;
-            }
-        } else {
-            if (height > MAX_SIZE) {
-                width = Math.round(width * (MAX_SIZE / height));
-                height = MAX_SIZE;
-            }
-        }
-        
-        const context = captureCanvas.getContext('2d');
-        captureCanvas.width = width;
-        captureCanvas.height = height;
-        context.drawImage(webcam, 0, 0, width, height);
-        
-        const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/jpeg', 0.8));
-        const formData = new FormData();
-        formData.append('file', blob, 'capture.jpg');
+        const MAX = 256;
+        let w = webcam.videoWidth, h = webcam.videoHeight;
+        if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+        else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+
+        const ctx = captureCanvas.getContext('2d');
+        captureCanvas.width = w;
+        captureCanvas.height = h;
+        ctx.drawImage(webcam, 0, 0, w, h);
+
+        const blob = await new Promise(r => captureCanvas.toBlob(r, 'image/jpeg', 0.8));
+        lastCapturedBlob = blob;
+
+        const fd = new FormData();
+        fd.append('file', blob, 'capture.jpg');
 
         try {
-            const response = await fetch('/api/inference', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) throw new Error('Scan failed');
-
-            const result = await response.json();
-            if (result.success && result.data.id !== "unknown") {
-                handleMatch(result.data);
+            const res = await fetch('/api/inference', { method: 'POST', body: fd });
+            if (!res.ok) throw new Error('Scan failed');
+            const data = await res.json();
+            if (data.success && data.has_conflict) {
+                handleConflict(data.data, data.vector_results || []);
+            } else if (data.success && data.data.id !== 'unknown') {
+                handleMatch(data.data);
             } else {
-                handleNoMatch(result.data.description || "Item not found in catalog.");
+                handleNoMatch(data.data.description || 'Item not found in catalog.', data.vector_results || []);
             }
-        } catch (error) {
-            console.error(error);
-            showNotification("Error connecting to server.");
+        } catch (err) {
+            console.error(err);
+            showNotification('Error connecting to server.', 'error');
         } finally {
             setLoading(false);
             detectionStatus.classList.add('hidden');
         }
     });
 
-    // Manual Upload
+    // ── Upload ───────────────────────────────────────────────────────────────
     uploadBtn.addEventListener('click', () => fileInput.click());
-    
+
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
+        lastCapturedBlob = file;
+
         setLoading(true);
         detectionStatus.classList.remove('hidden');
-        statusText.textContent = "Analyzing Image...";
+        statusText.textContent = 'Analyzing image...';
 
-        const formData = new FormData();
-        formData.append('file', file);
+        const fd = new FormData();
+        fd.append('file', file);
 
         try {
-            const response = await fetch('/api/inference', {
-                method: 'POST',
-                body: formData
-            });
-            const result = await response.json();
-            if (result.success && result.data.id !== "unknown") {
-                handleMatch(result.data);
+            const res = await fetch('/api/inference', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success && data.has_conflict) {
+                handleConflict(data.data, data.vector_results || []);
+            } else if (data.success && data.data.id !== 'unknown') {
+                handleMatch(data.data);
             } else {
-                handleNoMatch(result.data.description || "Item not found in catalog.");
+                handleNoMatch(data.data.description || 'Item not found in catalog.', data.vector_results || []);
             }
-        } catch (error) {
-            console.error(error);
-            showNotification("Error scanning uploaded file.");
+        } catch (err) {
+            showNotification('Error scanning uploaded file.', 'error');
         } finally {
             setLoading(false);
             detectionStatus.classList.add('hidden');
@@ -125,8 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ── Result handlers ───────────────────────────────────────────────────────
     function handleMatch(item) {
-        // Show in Last Scanned
+        lastMatchedItem = item;
         lastItemInfo.innerHTML = `
             <div class="product-result">
                 <div class="product-main-info">
@@ -137,41 +157,69 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="brand-tag">Brand: ${item.brand}</span>
                         <span class="unit-tag">Unit: ${item.unit}</span>
                     </div>
+                    <button class="btn-wrong-product" id="wrong-product-btn">&#x270F; Not this product?</button>
                 </div>
                 <div class="product-price-info">
                     <span class="price-label">Price</span>
-                    <span class="price-value">₹${item.price.toFixed(2)}</span>
+                    <span class="price-value">&#x20B9;${item.price.toFixed(2)}</span>
                 </div>
-            </div>
-        `;
-
-        // Add to cart
+            </div>`;
+        document.getElementById('wrong-product-btn').addEventListener('click', () => handleWrongProduct(item));
         addToCart(item);
         showNotification(`Added ${item.name} to bill`);
     }
 
-    function handleNoMatch(description) {
+    function handleNoMatch(description, vectorResults) {
+        const hasMatches = vectorResults && vectorResults.length > 0;
         lastItemInfo.innerHTML = `
             <div class="no-match">
                 <p><strong>Unrecognized Item</strong></p>
                 <p class="placeholder-text">${description}</p>
-            </div>
-        `;
-        showNotification("Item not recognized", "error");
+                <span class="vector-hint" id="open-modal-hint">
+                    ${hasMatches
+                        ? `&#x1F50D; ${vectorResults.length} similar product(s) found &mdash; click to view`
+                        : '&#x2795; Item not in catalog &mdash; click to add it'}
+                </span>
+            </div>`;
+
+        document.getElementById('open-modal-hint').addEventListener('click', () => {
+            if (hasMatches) showSimilarModal(vectorResults);
+            else showAddModal();
+        });
+
+        if (hasMatches) {
+            showSimilarModal(vectorResults);
+            showNotification(`Found ${vectorResults.length} similar product(s)`, 'warning');
+        } else {
+            showAddModal();
+            showNotification('Item not recognized — add it to your catalog', 'error');
+        }
     }
 
+    // ── Conflict handler (Gemma vs SigLIP disagree) ───────────────────────────
+    function handleConflict(gemmaResult, vectorResults) {
+        lastItemInfo.innerHTML = `
+            <div class="no-match">
+                <p><strong style="color:#f59e0b">&#x26A0; AI Conflict Detected</strong></p>
+                <p class="placeholder-text">Gemma identified <strong>${gemmaResult.name}</strong> but the visual search disagrees. Please confirm below.</p>
+            </div>`;
+        showNotification('Gemma and visual search disagree — please confirm the product', 'warning');
+        showSimilarModal(
+            vectorResults,
+            [],
+            'AI Disagrees — Please Confirm',
+            'Gemma identified one product; visual search found another. Pick the correct one.',
+            gemmaResult
+        );
+    }
+
+    // ── Cart ──────────────────────────────────────────────────────────────────
     function addToCart(item) {
-        const existingItem = cart.find(i => i.id === item.id);
-        if (existingItem) {
-            existingItem.quantity += 1;
+        const existing = cart.find(i => i.id === item.id);
+        if (existing) {
+            existing.quantity += 1;
         } else {
-            cart.push({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                unit: item.unit,
-                quantity: 1
-            });
+            cart.push({ id: item.id, name: item.name, price: item.price, unit: item.unit || 'N/A', quantity: 1 });
         }
         renderCart();
     }
@@ -181,69 +229,439 @@ document.addEventListener('DOMContentLoaded', () => {
             emptyCartMsg.classList.remove('hidden');
             cartItemsContainer.querySelectorAll('.cart-item').forEach(el => el.remove());
             checkoutBtn.disabled = true;
-            totalPriceSpan.textContent = `₹0.00`;
-            itemCountSpan.textContent = `0 items`;
-        } else {
-            emptyCartMsg.classList.add('hidden');
-            
-            // Clear existing and re-render
-            cartItemsContainer.querySelectorAll('.cart-item').forEach(el => el.remove());
-            
-            let total = 0;
-            let totalItems = 0;
-            cart.forEach((item) => {
-                const itemTotal = item.price * item.quantity;
-                total += itemTotal;
-                totalItems += item.quantity;
-
-                const itemEl = document.createElement('div');
-                itemEl.className = 'cart-item';
-                itemEl.innerHTML = `
-                    <div class="item-info">
-                        <span class="item-name">${item.name} <small>(${item.unit})</small></span>
-                        <div class="item-details">
-                            <span class="item-sku">${item.id}</span>
-                            <span class="item-qty">Qty: ${item.quantity}</span>
-                        </div>
-                    </div>
-                    <div class="item-price">₹${itemTotal.toFixed(2)}</div>
-                `;
-                cartItemsContainer.appendChild(itemEl);
-            });
-
-            totalPriceSpan.textContent = `₹${total.toFixed(2)}`;
-            itemCountSpan.textContent = `${totalItems} item${totalItems !== 1 ? 's' : ''}`;
-            checkoutBtn.disabled = false;
+            totalPriceSpan.textContent = '₹0.00';
+            itemCountSpan.textContent = '0 items';
+            return;
         }
+
+        emptyCartMsg.classList.add('hidden');
+        cartItemsContainer.querySelectorAll('.cart-item').forEach(el => el.remove());
+
+        let total = 0, totalQty = 0;
+        cart.forEach(item => {
+            const itemTotal = item.price * item.quantity;
+            total += itemTotal;
+            totalQty += item.quantity;
+
+            const el = document.createElement('div');
+            el.className = 'cart-item';
+            el.innerHTML = `
+                <div class="item-info">
+                    <span class="item-name">${item.name} <small>(${item.unit})</small></span>
+                    <div class="item-details">
+                        <span class="item-sku">${item.id}</span>
+                        <span class="item-qty">Qty: ${item.quantity}</span>
+                    </div>
+                </div>
+                <div class="item-price">&#x20B9;${itemTotal.toFixed(2)}</div>`;
+            cartItemsContainer.appendChild(el);
+        });
+
+        totalPriceSpan.textContent = `₹${total.toFixed(2)}`;
+        itemCountSpan.textContent  = `${totalQty} item${totalQty !== 1 ? 's' : ''}`;
+        checkoutBtn.disabled = false;
     }
 
     clearBtn.addEventListener('click', () => {
         cart = [];
         renderCart();
         lastItemInfo.innerHTML = '<p class="placeholder-text">Scan an item to see details</p>';
-        showNotification("Cart cleared");
+        showNotification('Cart cleared');
     });
 
     checkoutBtn.addEventListener('click', () => {
-        const total = cart.reduce((sum, item) => sum + item.price, 0);
-        alert(`Bill Generated Successfully!\nTotal Items: ${cart.length}\nTotal Amount: ₹${total.toFixed(2)}`);
+        const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+        const qty   = cart.reduce((s, i) => s + i.quantity, 0);
+        alert(`Bill Generated!\nTotal Items: ${qty}\nTotal Amount: ₹${total.toFixed(2)}`);
         cart = [];
         renderCart();
     });
 
-    function setLoading(isLoading) {
-        isAnalyzing = isLoading;
-        scanBtn.disabled = isLoading;
-        const loader = scanBtn.querySelector('.loader');
-        const btnText = scanBtn.querySelector('.btn-text');
-        
-        if (isLoading) {
-            loader.classList.remove('hidden');
-            btnText.textContent = 'Analyzing...';
-        } else {
-            loader.classList.add('hidden');
-            btnText.textContent = 'Scan & Add Item';
+    // ── Similar Products Modal ────────────────────────────────────────────────
+    function showSimilarModal(
+        vectorResults,
+        catalogItems = [],
+        title    = 'Similar Products Found',
+        subtitle = "The AI couldn't match this item exactly. Pick one or add it as new.",
+        gemmaResult = null
+    ) {
+        document.getElementById('similar-modal-title').textContent    = title;
+        document.getElementById('similar-modal-subtitle').textContent = subtitle;
+
+        let html = '';
+
+        // Gemma's identified product shown first with amber conflict styling
+        if (gemmaResult) {
+            html += `<div class="modal-section-label gemma-label">&#x1F916; Gemma identified this</div>
+                     <div class="similar-grid">${renderGemmaConflictCard(gemmaResult)}</div>`;
         }
+
+        if (vectorResults.length > 0) {
+            const lbl = gemmaResult ? 'Visual search found instead' : 'Visual matches from your custom catalog';
+            html += `<div class="modal-section-label">${lbl}</div>
+                     <div class="similar-grid">${vectorResults.map(renderVectorCard).join('')}</div>`;
+        }
+        if (catalogItems.length > 0) {
+            const lbl = vectorResults.length > 0 ? 'Or pick from your product catalog' : 'Pick from your product catalog';
+            html += `<div class="modal-section-label">${lbl}</div>
+                     <div class="catalog-grid">${catalogItems.map(renderCatalogCard).join('')}</div>`;
+        }
+        if (!html) {
+            html = `<p class="placeholder-text" style="text-align:center;padding:2rem 0">No matches found.</p>`;
+        }
+
+        similarGrid.innerHTML = html;
+
+        similarGrid.querySelectorAll('.btn-add-similar, .btn-add-catalog, .btn-add-gemma').forEach(btn => {
+            btn.addEventListener('click', () => {
+                addToCart({ id: btn.dataset.id, name: btn.dataset.name, price: parseFloat(btn.dataset.price), unit: btn.dataset.unit });
+                closeSimilarModal();
+                showNotification(`Added ${btn.dataset.name} to bill`);
+            });
+        });
+
+        similarModal.classList.remove('hidden');
+    }
+
+    function renderGemmaConflictCard(item) {
+        return `
+            <div class="similar-card gemma-conflict-card">
+                <div class="similar-thumb gemma-conflict-thumb">&#x1F916;</div>
+                <div class="similar-card-body">
+                    <div class="similar-name">${item.name}</div>
+                    <div class="similar-meta">${[item.brand, item.unit].filter(Boolean).join(' · ')}</div>
+                    <div class="similar-score-bar">
+                        <div class="score-label"><span>Gemma confidence</span><span>${item.confidence || 'High'}</span></div>
+                        <div class="score-track"><div class="score-fill gemma-score-fill" style="width:85%"></div></div>
+                    </div>
+                    <div class="similar-price">&#x20B9;${Number(item.price).toFixed(2)}</div>
+                </div>
+                <button class="btn-add-gemma"
+                        data-id="${item.id}"
+                        data-name="${item.name.replace(/"/g, '&quot;')}"
+                        data-price="${item.price}"
+                        data-unit="${item.unit || 'N/A'}">Yes, this is correct</button>
+            </div>`;
+    }
+
+    function renderVectorCard(r) {
+        return `
+            <div class="similar-card">
+                <div class="similar-thumb">
+                    ${r.thumbnail_url
+                        ? `<img src="${r.thumbnail_url}" alt="${r.name}" onerror="this.parentNode.innerHTML='&#x1F4E6;'">`
+                        : '&#x1F4E6;'}
+                </div>
+                <div class="similar-card-body">
+                    <div class="similar-name">${r.name}</div>
+                    <div class="similar-meta">${[r.brand, r.unit].filter(Boolean).join(' &middot; ')}</div>
+                    <div class="similar-score-bar">
+                        <div class="score-label"><span>Visual match</span><span>${Math.round(r.score * 100)}%</span></div>
+                        <div class="score-track"><div class="score-fill" style="width:${Math.round(r.score * 100)}%"></div></div>
+                    </div>
+                    <div class="similar-price">&#x20B9;${Number(r.price).toFixed(2)}</div>
+                </div>
+                <button class="btn-add-similar"
+                        data-id="${r.product_id}"
+                        data-name="${r.name.replace(/"/g, '&quot;')}"
+                        data-price="${r.price}"
+                        data-unit="${r.unit || 'N/A'}">Add to Cart</button>
+            </div>`;
+    }
+
+    function renderCatalogCard(p) {
+        return `
+            <div class="catalog-card">
+                <div class="catalog-card-info">
+                    <div class="catalog-card-name" title="${p.name}">${p.name}</div>
+                    <div class="catalog-card-meta">${[p.brand, p.unit].filter(Boolean).join(' &middot; ')}</div>
+                </div>
+                <div class="catalog-card-right">
+                    <div class="catalog-card-price">&#x20B9;${Number(p.price).toFixed(2)}</div>
+                    <button class="btn-add-catalog"
+                            data-id="${p.id}"
+                            data-name="${p.name.replace(/"/g, '&quot;')}"
+                            data-price="${p.price}"
+                            data-unit="${p.unit || 'N/A'}">Add</button>
+                </div>
+            </div>`;
+    }
+
+    function closeSimilarModal() {
+        similarModal.classList.add('hidden');
+    }
+
+    similarCloseBtn.addEventListener('click', closeSimilarModal);
+    similarModal.addEventListener('click', e => { if (e.target === similarModal) closeSimilarModal(); });
+    addNewFromSimilarBtn.addEventListener('click', () => { closeSimilarModal(); showAddModal(); });
+
+    // ── Misclassification correction ──────────────────────────────────────────
+    function removeLastFromCart(itemId) {
+        const idx = cart.findIndex(i => i.id === itemId);
+        if (idx === -1) return;
+        if (cart[idx].quantity > 1) cart[idx].quantity -= 1;
+        else cart.splice(idx, 1);
+        renderCart();
+    }
+
+    async function handleWrongProduct(wrongItem) {
+        removeLastFromCart(wrongItem.id);
+        lastItemInfo.innerHTML = `<p class="placeholder-text">Removed &mdash; finding the correct product&hellip;</p>`;
+        showNotification(`Removed ${wrongItem.name} — select the correct one`, 'warning');
+
+        let vectorResults = [];
+        if (lastCapturedBlob) {
+            try {
+                const fd = new FormData();
+                fd.append('file', lastCapturedBlob, 'captured.jpg');
+                vectorResults = (await (await fetch('/api/vector-search', { method: 'POST', body: fd })).json()).vector_results || [];
+            } catch(e) { console.error('Correction vector search failed:', e); }
+        }
+
+        showSimilarModal(
+            vectorResults,
+            catalogProducts,
+            'Select the Correct Product',
+            'The item was misidentified. Pick the correct product from the list or add it as new.'
+        );
+    }
+
+    // ── Add Product Modal ─────────────────────────────────────────────────────
+    function totalPhotoCount() {
+        return (useScanCapture ? 1 : 0) + capturedProductBlobs.length + pendingUploadFiles.length;
+    }
+
+    function refreshPhotoPreviews() {
+        imagePreviewStrip.innerHTML = '';
+
+        const makeWrap = (src, extraClass, onRemove) => {
+            const wrap = document.createElement('div');
+            wrap.className = 'preview-thumb-wrap';
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = `preview-thumb${extraClass ? ' ' + extraClass : ''}`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'preview-remove-btn';
+            btn.title = 'Remove';
+            btn.textContent = '×';
+            btn.addEventListener('click', onRemove);
+            wrap.appendChild(img);
+            wrap.appendChild(btn);
+            imagePreviewStrip.appendChild(wrap);
+        };
+
+        if (useScanCapture && lastCapturedBlob) {
+            makeWrap(URL.createObjectURL(lastCapturedBlob), 'captured', () => {
+                useScanCapture = false;
+                refreshPhotoPreviews();
+            });
+        }
+        capturedProductBlobs.forEach((b, i) => {
+            makeWrap(URL.createObjectURL(b), 'cam-capture', () => {
+                capturedProductBlobs.splice(i, 1);
+                refreshPhotoPreviews();
+            });
+        });
+        pendingUploadFiles.forEach((f, i) => {
+            makeWrap(URL.createObjectURL(f), '', () => {
+                pendingUploadFiles.splice(i, 1);
+                refreshPhotoPreviews();
+            });
+        });
+    }
+
+    function showAddModal() {
+        addProductForm.reset();
+        newImagesInput.value = '';
+        capturedProductBlobs = [];
+        pendingUploadFiles   = [];
+        useScanCapture       = !!lastCapturedBlob;
+        refreshPhotoPreviews();
+        modalCameraPreview.srcObject = webcam.srcObject || null;
+        addModal.classList.remove('hidden');
+    }
+
+    function closeAddModal() {
+        addModal.classList.add('hidden');
+        modalCameraPreview.srcObject = null;
+    }
+
+    addCloseBtn.addEventListener('click', closeAddModal);
+    addModal.addEventListener('click', e => { if (e.target === addModal) closeAddModal(); });
+
+    uploadZone.addEventListener('click', () => newImagesInput.click());
+
+    newImagesInput.addEventListener('change', () => {
+        const incoming = Array.from(newImagesInput.files);
+        const slots = 3 - totalPhotoCount();
+        pendingUploadFiles.push(...incoming.slice(0, slots));
+        newImagesInput.value = ''; // allow re-selecting same file
+        refreshPhotoPreviews();
+    });
+
+    captureProductBtn.addEventListener('click', () => {
+        if (totalPhotoCount() >= 3) {
+            showNotification('Maximum 3 photos allowed', 'warning');
+            return;
+        }
+        if (!webcam.videoWidth) {
+            showNotification('Camera not available', 'error');
+            return;
+        }
+        const ctx = captureCanvas.getContext('2d');
+        captureCanvas.width  = webcam.videoWidth;
+        captureCanvas.height = webcam.videoHeight;
+        ctx.drawImage(webcam, 0, 0);
+        captureCanvas.toBlob(blob => {
+            capturedProductBlobs.push(blob);
+            refreshPhotoPreviews();
+            showNotification('Photo captured');
+        }, 'image/jpeg', 0.85);
+    });
+
+    addProductForm.addEventListener('submit', async e => {
+        e.preventDefault();
+
+        const name     = document.getElementById('new-name').value.trim();
+        const priceVal = document.getElementById('new-price').value;
+        const category = document.getElementById('new-category').value.trim() || 'General';
+        const brand    = document.getElementById('new-brand').value.trim()    || 'Unknown';
+        const unit     = document.getElementById('new-unit').value.trim()     || 'N/A';
+
+        if (!name || !priceVal) {
+            showNotification('Please fill in Name and Price.', 'error');
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('name',     name);
+        fd.append('price',    parseFloat(priceVal));
+        fd.append('category', category);
+        fd.append('brand',    brand);
+        fd.append('unit',     unit);
+
+        const allImages = [
+            ...(useScanCapture && lastCapturedBlob ? [{ blob: lastCapturedBlob, name: 'captured.jpg' }] : []),
+            ...capturedProductBlobs.map((b, i) => ({ blob: b, name: `cam_${i + 1}.jpg` })),
+            ...pendingUploadFiles.map(f => ({ blob: f, name: f.name })),
+        ].slice(0, 3);
+
+        if (allImages.length === 0) {
+            showNotification('Please add at least one photo.', 'error');
+            return;
+        }
+        allImages.forEach(({ blob, name }) => fd.append('images', blob, name));
+
+        setSaveLoading(true);
+        try {
+            const res = await fetch('/api/add-product', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.success) {
+                addToCart({ id: result.product_id, name, price: parseFloat(priceVal), unit });
+                closeAddModal();
+                showNotification(`"${name}" saved to catalog & added to cart`);
+            } else {
+                showNotification('Failed to save product.', 'error');
+            }
+        } catch (err) {
+            showNotification('Server error while saving.', 'error');
+        } finally {
+            setSaveLoading(false);
+        }
+    });
+
+    // ── Manage Custom Catalog Modal ───────────────────────────────────────────
+    const manageModal       = document.getElementById('manage-modal');
+    const manageCloseBtn    = document.getElementById('manage-close-btn');
+    const manageList        = document.getElementById('manage-products-list');
+    const manageCatalogBtn  = document.getElementById('manage-catalog-btn');
+
+    manageCatalogBtn.addEventListener('click', openManageModal);
+    manageCloseBtn.addEventListener('click', closeManageModal);
+    manageModal.addEventListener('click', e => { if (e.target === manageModal) closeManageModal(); });
+
+    async function openManageModal() {
+        manageList.innerHTML = '<p class="placeholder-text" style="text-align:center;padding:2rem">Loading&hellip;</p>';
+        manageModal.classList.remove('hidden');
+        try {
+            const data = await (await fetch('/api/vector-products')).json();
+            renderManageList(data.products || []);
+        } catch(e) {
+            manageList.innerHTML = '<p class="placeholder-text" style="text-align:center;padding:2rem">Failed to load.</p>';
+        }
+    }
+
+    function closeManageModal() {
+        manageModal.classList.add('hidden');
+    }
+
+    function renderManageList(products) {
+        if (products.length === 0) {
+            manageList.innerHTML = `
+                <div class="manage-empty">
+                    <p style="font-size:2rem">&#x1F4E6;</p>
+                    <p>No custom products yet.</p>
+                    <p class="placeholder-text">Scan an unknown item and add it to start building your catalog.</p>
+                </div>`;
+            return;
+        }
+        manageList.innerHTML = products.map(p => `
+            <div class="manage-card" id="mc-${p.product_id}">
+                <div class="manage-thumb">
+                    ${p.thumbnail_url
+                        ? `<img src="${p.thumbnail_url}" alt="${p.name}" onerror="this.parentNode.innerHTML='&#x1F4E6;'">`
+                        : '&#x1F4E6;'}
+                </div>
+                <div class="manage-info">
+                    <div class="manage-name">${p.name}</div>
+                    <div class="manage-meta">${[p.category, p.brand, p.unit].filter(Boolean).join(' &middot; ')}</div>
+                    <div class="manage-price">&#x20B9;${Number(p.price).toFixed(2)}</div>
+                </div>
+                <button class="btn-delete-product"
+                        data-id="${p.product_id}"
+                        data-name="${p.name.replace(/"/g, '&quot;')}">
+                    &#x1F5D1; Delete
+                </button>
+            </div>`).join('');
+
+        manageList.querySelectorAll('.btn-delete-product').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id   = btn.dataset.id;
+                const name = btn.dataset.name;
+                if (!confirm(`Delete "${name}" from your catalog?\nThis will also remove all stored photos and cannot be undone.`)) return;
+
+                btn.textContent = 'Deleting…';
+                btn.disabled = true;
+
+                try {
+                    const res = await fetch(`/api/delete-product/${id}`, { method: 'DELETE' });
+                    if ((await res.json()).success) {
+                        document.getElementById(`mc-${id}`)?.remove();
+                        showNotification(`Deleted "${name}" from catalog`);
+                        if (!manageList.querySelector('.manage-card')) renderManageList([]);
+                    }
+                } catch(e) {
+                    showNotification('Failed to delete.', 'error');
+                    btn.textContent = '&#x1F5D1; Delete';
+                    btn.disabled = false;
+                }
+            });
+        });
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
+    function setLoading(on) {
+        isAnalyzing = on;
+        scanBtn.disabled = on;
+        scanBtn.querySelector('.loader').classList.toggle('hidden', !on);
+        scanBtn.querySelector('.btn-text').textContent = on ? 'Analyzing...' : 'Scan & Add Item';
+    }
+
+    function setSaveLoading(on) {
+        saveBtn.disabled = on;
+        saveLoader.classList.toggle('hidden', !on);
+        saveBtn.querySelector('.btn-text').textContent = on ? 'Saving...' : 'Save & Add to Cart';
     }
 
     function showNotification(message, type = 'success') {
@@ -251,7 +669,6 @@ document.addEventListener('DOMContentLoaded', () => {
         toast.className = `notification ${type}`;
         toast.textContent = message;
         notificationContainer.appendChild(toast);
-        
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(20px)';
@@ -259,4 +676,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 });
-

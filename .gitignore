@@ -1,0 +1,46 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Local data & cache
+product_images/
+qdrant_db/
+.cache/
+huggingface_hub/
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# Temp files
+*.tmp
+*.bak
+qdrant_db/
