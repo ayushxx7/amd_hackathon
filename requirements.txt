@@ -6,3 +6,4 @@ pillow
 transformers>=4.37.0
 qdrant-client
 sentencepiece
+torch
