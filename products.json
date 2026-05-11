@@ -88,6 +88,33 @@
         "price": 1200.00,
         "keywords": ["glutamine power", "supplement", "black jar", "gym powder", "fitness"],
         "category": "Supplements"
+    },
+    {
+        "id": "SKU-011",
+        "name": "Dexolac Nusobee Lactose Free Baby Powder",
+        "brand": "Dexolac",
+        "unit": "400g",
+        "price": 500.00,
+        "keywords": ["dexolac", "nusobee", "lactose free", "baby powder", "formula"],
+        "category": "Baby Care"
+    },
+    {
+        "id": "SKU-012",
+        "name": "Eno Fruit Salt Lemon Flavor",
+        "brand": "Eno",
+        "unit": "100g",
+        "price": 150.00,
+        "keywords": ["eno", "fruit salt", "acidity", "digestion", "lemon flavor"],
+        "category": "Health Care"
+    },
+    {
+        "id": "SKU-013",
+        "name": "Little's Baby Diapers",
+        "brand": "Little's",
+        "unit": "30 Pieces",
+        "price": 350.00,
+        "keywords": ["littles", "diapers", "baby", "pampers", "pants"],
+        "category": "Baby Care"
     }
 ]
 

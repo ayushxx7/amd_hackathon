@@ -20,7 +20,9 @@ import ollama
 
 # ── Config ──────────────────────────────────────────────────────────────────
 MODEL_NAME         = "gemma4:e4b"
-OLLAMA_HOST        = "http://127.0.0.1:11434"
+# MODEL_NAME         = "qwen2.5vl:3b"
+# OLLAMA_HOST        = "http://127.0.0.1:11434"
+OLLAMA_HOST        = "https://1a49-70-50-135-109.ngrok-free.app"
 EMBED_MODEL        = "google/siglip-base-patch16-224"
 VECTOR_DIM         = 768
 QDRANT_PATH        = "./qdrant_db"

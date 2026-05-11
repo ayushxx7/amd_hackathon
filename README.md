@@ -1,5 +1,7 @@
 # KiranaAI — Visual Billing Counter
 
+[![Try Live](https://img.shields.io/badge/Try%20Live-Click%20Here-success?style=for-the-badge)](https://amd-hackathon-three.vercel.app/)
+
 A local grocery/retail billing system that uses multimodal AI to identify products from photos and populate the bill automatically. Built for offline-first operation in small Indian retail shops.
 
 ## The Problem
