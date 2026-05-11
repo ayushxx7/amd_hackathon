@@ -1,8 +1,15 @@
 # KiranaAI — Visual Billing Counter
 
 [![Try Live](https://img.shields.io/badge/Try%20Live-Click%20Here-success?style=for-the-badge)](https://amd-hackathon-three.vercel.app/)
+[![AMD Hackathon](https://img.shields.io/badge/AMD%20Hackathon-2026-blue?style=for-the-badge)](https://lablab.ai/event/amd-hackathon)
 
 A local grocery/retail billing system that uses multimodal AI to identify products from photos and populate the bill automatically. Built for offline-first operation in small Indian retail shops.
+
+## 📸 Visual Gallery
+
+| Desktop Dashboard | Mobile View |
+|:---:|:---:|
+| ![Desktop](/showcase/desktop.png) | ![Mobile](/showcase/landing.png) |
 
 ## The Problem
 
@@ -12,29 +19,24 @@ The harder sub-problem: **AI models go stale**. Gemma 4 knows common products fr
 
 ## Architecture
 
-```
-Scan product image
-        │
-        ├──────────────────────────┐
-        ▼                          ▼
-  Gemma 4 (LLM)            SigLIP + Qdrant
-  catalog lookup          vector similarity
-  (known 12 SKUs)         (custom products)
-        │                          │
-        └──────────┬───────────────┘
-                   ▼
-         Three possible outcomes:
-         
-  1. Gemma matched, no SigLIP conflict
-     → auto-add to cart
-     
-  2. Gemma says "unknown"
-     → show SigLIP results from custom catalog
-     → user picks or adds as new product
-     
-  3. Gemma matched BUT SigLIP found a different
-     product at score ≥ 0.72 with no name overlap
-     → conflict: user confirms which is correct
+```mermaid
+graph TD
+    A[Scan Product Image] --> B{Parallel Inference}
+    subgraph "Hybrid AI Engine"
+    B --> C[Gemma 4: LLM]
+    B --> D[SigLIP: Vision Encoder]
+    C --> E[Static Catalog Lookup]
+    D --> F[Qdrant: Vector Search]
+    end
+    E --> G[Outcome Engine]
+    F --> G
+    G --> H{Evaluation}
+    H -- "Confident Match" --> I[Auto-Add to Cart]
+    H -- "Gemma Unknown" --> J[Show SigLIP Suggestions]
+    H -- "Conflict Detected" --> K[Manual Confirmation]
+    J --> L[User Selects/Adds New]
+    K --> L
+    L --> M[Update Custom Catalog & Qdrant]
 ```
 
 ### Why two models?
