@@ -1,0 +1,7 @@
+main.py
+requirements.txt
+run.sh
+venv/
+product_images/
+qdrant_db/
+.env
